@@ -1,0 +1,7 @@
+Wir entwickeln eine app, die den logischen Aufbau eines Netzwerkes aus Routers, Switches und WLAN Infrastruktur erfassen und visualisieren kann. Die App wird also aus drei Teilen besteht, Erfassung von Informationen, Auswertung und Visualisierung.
+
+1. Erfassung von Informationen - Dies soll nur das Einlesen von Konfigurationsdateien, CDP und LLDP Informationen, Routing Tabellen und gegebenenfalls weiteren hilfreichen Daten direkt von den Netzwerkomponenten erfolgen. Das Einlesen erfolgt über SSH Sessions in denen CLI Kommandos ausgeführt werden, um Informationen auszulesen. Alternativ werden API Schnittstellen, sofern verfügbar.
+
+2. Auswertung - Die Auswertung der erfassten Informationen soll die Grundlage für die Visalisierung schaffen. Hierfür muss ein app internes Modell entworfen werden, um die erkannten Zusammenhänge im Netzwerk abzulegen und für die Visualisierung bereitzustellen. Die Auswertung soll unter zuhilfenahme von KI Funktionen einer privaten LLM Infrastruktur erfolgen.
+
+3. Visualisierung des Netzwerkes - Die Visualisierung soll grafisch mit der Darstellung der erfassten Netzwerkkomponenten und deren Beziehungen/Verbindungen erfolgen. Die Visualierung soll zwischen einer Layer 2 und Layer 3 Darstellung wechseln können.

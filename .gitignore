@@ -1,0 +1,32 @@
+# Dependencies
+node_modules/
+
+# Next.js
+.next/
+out/
+
+# SQLite database
+data/app.db
+data/app.db-shm
+data/app.db-wal
+
+# Environment
+.env
+.env.local
+.env.production
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+*.swp
+*.swo
+.vscode/
+.idea/
+
+# Claude Code local settings
+.claude/settings.local.json
+
+# MCP config (may contain local paths/keys)
+.mcp.json
