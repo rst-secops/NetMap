@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getNodeById } from "../../../lib/dc-nodes";
 import NodeResults from "../../../components/NodeResults";
+import CollectNodeButton from "../../../components/CollectNodeButton";
 
 export const dynamic = "force-dynamic";
 
@@ -30,12 +31,15 @@ export default async function DcNodeDetailPage({
 
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-bold">{node.nodeDisplayName}</h1>
-        <Link
-          href={`/dc-nodes/${id}/edit`}
-          className="rounded-lg bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-500"
-        >
-          Edit Node
-        </Link>
+        <div className="flex items-center gap-3">
+          <CollectNodeButton nodeId={id} />
+          <Link
+            href={`/dc-nodes/${id}/edit`}
+            className="rounded-lg bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-500"
+          >
+            Edit Node
+          </Link>
+        </div>
       </div>
 
       <div className="space-y-6">

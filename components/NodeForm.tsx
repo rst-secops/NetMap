@@ -47,6 +47,16 @@ export default function NodeForm({ action, defaultValues }: NodeFormProps) {
     setCommands((prev) => prev.map((c, i) => (i === index ? value : c)));
   }
 
+  function moveCommand(index: number, direction: "up" | "down") {
+    setCommands((prev) => {
+      const target = direction === "up" ? index - 1 : index + 1;
+      if (target < 0 || target >= prev.length) return prev;
+      const next = [...prev];
+      [next[index], next[target]] = [next[target], next[index]];
+      return next;
+    });
+  }
+
   return (
     <form action={formAction} className="space-y-6">
       {defaultValues?.id && (
@@ -235,22 +245,34 @@ export default function NodeForm({ action, defaultValues }: NodeFormProps) {
               />
               <button
                 type="button"
+                onClick={() => moveCommand(i, "up")}
+                disabled={i === 0}
+                aria-label={`Move command ${i + 1} up`}
+                className="rounded-lg p-2 text-gray-500 hover:bg-gray-800 hover:text-gray-300 disabled:cursor-not-allowed disabled:opacity-30"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <polyline points="18 15 12 9 6 15" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                onClick={() => moveCommand(i, "down")}
+                disabled={i === commands.length - 1}
+                aria-label={`Move command ${i + 1} down`}
+                className="rounded-lg p-2 text-gray-500 hover:bg-gray-800 hover:text-gray-300 disabled:cursor-not-allowed disabled:opacity-30"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <polyline points="6 9 12 15 18 9" />
+                </svg>
+              </button>
+              <button
+                type="button"
                 onClick={() => removeCommand(i)}
                 disabled={commands.length <= 1}
                 aria-label={`Remove command ${i + 1}`}
                 className="rounded-lg p-2 text-gray-500 hover:bg-gray-800 hover:text-red-400 disabled:cursor-not-allowed disabled:opacity-30"
               >
-                <svg
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden="true"
-                >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                   <line x1="18" y1="6" x2="6" y2="18" />
                   <line x1="6" y1="6" x2="18" y2="18" />
                 </svg>

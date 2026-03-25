@@ -8,6 +8,7 @@ import {
   createNode,
   updateNode,
   getEnabledNodes,
+  getNodeById,
   saveNodeResults,
   saveNodeError,
 } from "../../lib/dc-nodes";
@@ -56,7 +57,33 @@ export async function runCollectionNow() {
 
   // Run collection in background — don't await in the action
   // so the UI gets immediate feedback
-  runCollection(nodes).then((results) => {
+  runCollection(nodes)
+    .then((results) => {
+      for (const result of results) {
+        if (result.success && result.results) {
+          saveNodeResults(result.nodeId, result.results);
+        } else if (!result.success && result.error) {
+          saveNodeError(result.nodeId, result.error);
+        }
+      }
+      const succeeded = results.filter((r) => r.success).length;
+      const failed = results.length - succeeded;
+      console.log(`[DC] Collection finished: ${succeeded} succeeded, ${failed} failed`);
+    })
+    .catch((err) => {
+      console.error("[DC] Collection run failed unexpectedly:", err);
+    });
+
+  return { message: `Collection started for ${nodes.length} node(s). Refresh the page to see results.` };
+}
+
+export async function runCollectionForNode(id: string) {
+  const node = getNodeById(id);
+  if (!node) return { success: false, message: "Node not found." };
+  if (node.nodeType !== "SSH") return { success: false, message: "Only SSH nodes are supported." };
+
+  try {
+    const results = await runCollection([node]);
     for (const result of results) {
       if (result.success && result.results) {
         saveNodeResults(result.nodeId, result.results);
@@ -64,9 +91,17 @@ export async function runCollectionNow() {
         saveNodeError(result.nodeId, result.error);
       }
     }
-  });
-
-  return { message: `Collection started for ${nodes.length} node(s). Refresh the page to see results.` };
+    const ok = results.some((r) => r.success);
+    revalidatePath(`/dc-nodes/${id}`);
+    return {
+      success: ok,
+      message: ok ? "Collection completed successfully." : `Collection failed: ${results[0]?.error ?? "Unknown error"}`,
+    };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[DC] Single-node collection failed for ${node.nodeDisplayName}:`, msg);
+    return { success: false, message: `Collection failed: ${msg}` };
+  }
 }
 
 export interface NodeFormState {
