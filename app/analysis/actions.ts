@@ -8,6 +8,7 @@ import { buildPrompt } from "../../lib/prompt-builder";
 import { saveAnalysisResult } from "../../lib/analysis-results";
 import { setSetting } from "../../lib/settings";
 import { saveApiCallLog } from "../../lib/api-call-logs";
+import { getConfigById, getDefaultConfig } from "../../lib/analysis-configs";
 
 export async function updateProviderAction(formData: FormData) {
   const result = analysisProviderSchema.safeParse({
@@ -81,7 +82,7 @@ let analysisInProgress = false;
 
 export async function runAnalysisAction(
   _prev: RunAnalysisState,
-  _formData: FormData
+  formData: FormData
 ): Promise<RunAnalysisState> {
   if (analysisInProgress) {
     return { error: "Analysis already running. Please wait." };
@@ -97,34 +98,61 @@ export async function runAnalysisAction(
       };
     }
 
-    const claudeConfig = getClaudeConfig();
-    if (!claudeConfig.apiKey) {
+    const configId = formData.get("configId") as string | null;
+    const config = (configId ? getConfigById(configId) : null) ?? getDefaultConfig();
+    if (!config) {
       return {
-        error: "Claude API key not configured. Go to Data Analysis Configuration.",
+        error: "No analysis config found. Please create one in Analysis Configs.",
+      };
+    }
+    if (!config.apiKey) {
+      return {
+        error: `Analysis config "${config.name}" has no API key configured.`,
       };
     }
 
     const { systemPrompt, userMessage } = buildPrompt(
       nodesWithResults,
-      claudeConfig.maxTokens
+      config.maxTokens
     );
 
-    const apiBase = claudeConfig.baseUrl || "https://api.anthropic.com";
-    const requestPayload = {
-      model: claudeConfig.model,
-      max_tokens: claudeConfig.maxTokens,
-      system: systemPrompt,
-      messages: [{ role: "user", content: userMessage }],
-    };
+    let fetchUrl: string;
+    let fetchHeaders: Record<string, string>;
+    let requestPayload: object;
 
-    const t0 = Date.now();
-    const response = await fetch(`${apiBase}/v1/messages`, {
-      method: "POST",
-      headers: {
-        "x-api-key": claudeConfig.apiKey,
+    if (config.provider === "google") {
+      const apiBase = config.baseUrl || "https://generativelanguage.googleapis.com/v1beta";
+      fetchUrl = `${apiBase}/models/${config.model}:generateContent`;
+      fetchHeaders = {
+        "x-goog-api-key": config.apiKey,
+        "content-type": "application/json",
+      };
+      requestPayload = {
+        systemInstruction: { parts: [{ text: systemPrompt }] },
+        contents: [{ role: "user", parts: [{ text: userMessage }] }],
+        generationConfig: { maxOutputTokens: config.maxTokens },
+      };
+    } else {
+      // Claude (default)
+      const apiBase = config.baseUrl || "https://api.anthropic.com";
+      fetchUrl = `${apiBase}/v1/messages`;
+      fetchHeaders = {
+        "x-api-key": config.apiKey,
         "anthropic-version": "2023-06-01",
         "content-type": "application/json",
-      },
+      };
+      requestPayload = {
+        model: config.model,
+        max_tokens: config.maxTokens,
+        system: systemPrompt,
+        messages: [{ role: "user", content: userMessage }],
+      };
+    }
+
+    const t0 = Date.now();
+    const response = await fetch(fetchUrl, {
+      method: "POST",
+      headers: fetchHeaders,
       body: JSON.stringify(requestPayload),
     });
     const durationMs = Date.now() - t0;
@@ -132,8 +160,9 @@ export async function runAnalysisAction(
     const responseText = await response.text();
 
     saveApiCallLog({
-      provider: "claude",
-      model: claudeConfig.model,
+      provider: config.provider,
+      model: config.model,
+      configId: config.id,
       requestBody: JSON.stringify(requestPayload),
       responseStatus: response.status,
       responseBody: responseText,
@@ -141,11 +170,14 @@ export async function runAnalysisAction(
     });
 
     if (!response.ok) {
-      return { error: `Claude API error ${response.status}: ${responseText}` };
+      const providerLabel = config.provider === "google" ? "Google AI" : "Claude";
+      return { error: `${providerLabel} API error ${response.status}: ${responseText}` };
     }
 
     const responseBody = JSON.parse(responseText);
-    const rawText: string | undefined = responseBody?.content?.[0]?.text;
+    const rawText: string | undefined = config.provider === "google"
+      ? responseBody?.candidates?.[0]?.content?.parts?.[0]?.text
+      : responseBody?.content?.[0]?.text;
     if (!rawText) {
       return { error: "Unexpected response format from Claude API." };
     }
@@ -168,7 +200,8 @@ export async function runAnalysisAction(
       return { error: "Claude returned non-JSON output. Try again or check your prompt." };
     }
 
-    const saved = saveAnalysisResult(rawText, parsed);
+    const resultName = `${config.name} – ${new Date().toISOString().slice(0, 16).replace("T", " ")}`;
+    const saved = saveAnalysisResult(rawText, parsed, resultName, config.name);
     setSetting("last_analysis_id", saved.id);
     revalidatePath("/");
 

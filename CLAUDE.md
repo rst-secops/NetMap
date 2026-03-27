@@ -24,12 +24,12 @@ Always use Bun (not npm/npx/yarn) for running scripts and installing packages.
 
 ## Architecture
 
-**NetMap** is a network topology capture and visualization app. It is in early development — the specification is defined in `SPEC.md` and `spec-de.txt`, but most implementation is pending.
+**NetMap** is a network topology capture and visualization app.
 
 ### Stack
 - **Next.js 15** with App Router (Bun runtime)
 - **SQLite** via Bun's built-in SQLite client — raw SQL only, no ORM
-- **React Flow** (`@xyflow/react`) for network visualization
+- **React Flow** (`@xyflow/react`) + **dagre** (`@dagrejs/dagre`) for network visualization with auto-layout
 - **TailwindCSS v4** for styling
 - **ssh2** for SSH-based data collection from network devices
 - **Vitest** for testing
@@ -38,55 +38,66 @@ Always use Bun (not npm/npx/yarn) for running scripts and installing packages.
 
 ### Three Core Modules
 
-1. **Data Collection** — SSH sessions (via ssh2) and API calls (fetch) to gather config/topology data from routers, switches, and WLAN infrastructure. Credentials and results are stored in the `dc-nodes` SQLite table.
+1. **Data Collection** — SSH sessions (via ssh2) and API calls (fetch) to gather config/topology data from routers, switches, and WLAN infrastructure. Credentials and results are stored in the `dc_nodes` SQLite table.
 
-2. **Analysis** — Processes collected data to extract network relationships. May use a private LLM. Should detect potential new DC nodes and surface them as navbar notifications. Outputs must be React Flow-compatible.
+2. **Analysis** — Named, reusable analysis configurations select the LLM provider and model. Supported providers: Claude (Anthropic) and Google AI Studio. Results are stored with a name (`<config> – YYYY-MM-DD HH:mm`), capped at 100. API calls are logged per config.
 
-3. **Network Visualization** — React Flow canvas showing network topology with Layer 2/3 view switching. Nodes are interactive (zoom, pan, click for details).
+3. **Network Visualization** — React Flow canvas with dagre auto-layout. The Network Maps viewer (`/`) lets users switch between stored results, delete results, and click nodes/edges for metadata.
 
-### Planned File Structure
+### File Structure
 
 ```
-lib/db.ts          # Bun SQLite singleton + query/get/run helpers
-lib/dc-nodes.ts    # DC Node repository functions (CRUD + toggleEnabled)
-app/page.tsx       # Home — network topology view
-app/dc-nodes/      # DC Node management pages
-components/        # NodeList, EnableToggle, DeleteNodeButton
-data/app.db        # SQLite database file (gitignored)
+lib/db.ts                  # Bun SQLite singleton + query/get/run helpers
+lib/dc-nodes.ts            # DC Node CRUD
+lib/analysis-configs.ts    # Analysis config CRUD
+lib/analysis-results.ts    # Analysis result storage + 100-cap + delete
+lib/api-call-logs.ts       # API call log storage + per-config queries
+lib/prompt-builder.ts      # Builds LLM prompt from collected node data
+lib/schemas.ts             # Zod schemas for all inputs
+lib/settings.ts            # Key-value settings helpers
+lib/analysis-settings.ts   # Legacy analysis settings (deprecated path)
+app/page.tsx               # Network Maps viewer (MapViewer)
+app/actions.ts             # Global server actions (mark seen, delete result)
+app/analysis/actions.ts    # runAnalysisAction — routes to Claude or Google AI
+app/analysis/configs/      # Analysis config CRUD pages + actions
+app/dc-nodes/              # DC Node management pages + actions
+components/                # All UI components (see SPEC.md §7.3)
+data/app.db                # SQLite database file (gitignored)
 ```
 
 ### Database
 
-Single SQLite file at `data/app.db`. The main table is `dc_nodes`:
+Single SQLite file at `data/app.db`. Schema is auto-migrated on every `getDb()` call via `initSchema()`. Key tables:
 
-```sql
-CREATE TABLE dc_nodes (
-  id TEXT PRIMARY KEY,
-  node_type TEXT NOT NULL DEFAULT 'SSH',
-  node_display_name TEXT NOT NULL,
-  host TEXT NOT NULL,
-  port INTEGER NOT NULL DEFAULT 22,
-  commands TEXT NOT NULL,    -- JSON array of CLI commands
-  node_user TEXT NOT NULL,
-  node_passwd TEXT NOT NULL,
-  is_enabled INTEGER NOT NULL DEFAULT 1,
-  results TEXT,              -- JSON from last collection run
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-);
-```
-
-TypeScript uses camelCase (`nodeType`, `nodeDisplayName`, etc.) mapped to snake_case SQL columns in the repository layer.
+- `dc_nodes` — DC node credentials and last collection results
+- `settings` — key-value store (schedule, last_analysis_id, last_seen_analysis_id)
+- `analysis_configs` — named LLM configurations (provider, model, key, etc.)
+- `analysis_results` — stored analysis results with graph data (capped at 100)
+- `api_call_logs` — full request/response log per LLM call, linked to config
 
 ### DB Helper Pattern (`lib/db.ts`)
 
 ```typescript
-getDb()               // returns singleton Database connection
-query<T>(sql, params?): T[]
-get<T>(sql, params?): T | undefined
-run(sql, params?)
+getDb()                        // returns singleton Database connection
+query<T>(sql, ...params): T[]
+get<T>(sql, ...params): T | undefined
+run(sql, ...params)
 ```
+
+**Important:** Always use the exported `run()` helper inside `getDb().transaction()` callbacks — never call `db.run()` directly, as `Database.run()` expects array params, not variadic args.
+
+### Analysis — LLM API Routing
+
+`runAnalysisAction` in `app/analysis/actions.ts` branches on `config.provider`:
+- `"claude"` → `POST {baseUrl}/v1/messages` with `x-api-key` + `anthropic-version` headers
+- `"google"` → `POST {baseUrl}/v1beta/models/{model}:generateContent` with `x-goog-api-key` header
+
+Both paths strip markdown fences from responses before JSON parsing.
+
+### Schema Migration Pattern
+
+Use `PRAGMA table_info(table_name)` to check column existence before `ALTER TABLE` — do **not** use `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` (requires SQLite 3.37+, not guaranteed).
 
 ### Security Notes
 - Sanitize and validate all user input (IP addresses, hostnames) before DB writes or SSH connections
-- SSH credentials are stored in plaintext in SQLite for now — treat as sensitive
+- SSH credentials and LLM API keys are stored in plaintext in SQLite for now — treat as sensitive

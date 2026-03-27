@@ -55,17 +55,14 @@ export default function Navbar() {
           <LogoIcon />
           <span className="text-lg font-semibold">NetMap</span>
         </Link>
-        <Link
-          href="/dc-nodes"
-          className="text-sm text-gray-300 hover:text-gray-100"
-        >
-          Data Collection Configuration
+        <Link href="/" className="text-sm text-gray-300 hover:text-gray-100">
+          Network Maps
         </Link>
-        <Link
-          href="/analysis"
-          className="text-sm text-gray-300 hover:text-gray-100"
-        >
-          Data Analysis Configuration
+        <Link href="/dc-nodes" className="text-sm text-gray-300 hover:text-gray-100">
+          Data Collection
+        </Link>
+        <Link href="/analysis/configs" className="text-sm text-gray-300 hover:text-gray-100">
+          Data Analysis
         </Link>
       </div>
       <div className="flex-1" />
