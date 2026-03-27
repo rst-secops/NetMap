@@ -109,12 +109,22 @@ export async function updateConfigAction(
   redirect("/analysis/configs");
 }
 
-export async function deleteConfigAction(id: string): Promise<void> {
-  deleteConfig(id);
-  revalidatePath("/analysis/configs");
+export async function deleteConfigAction(id: string): Promise<{ error?: string }> {
+  try {
+    deleteConfig(id);
+    revalidatePath("/analysis/configs");
+    return {};
+  } catch {
+    return { error: "Failed to delete config." };
+  }
 }
 
-export async function setDefaultConfigAction(id: string): Promise<void> {
-  setDefaultConfig(id);
-  revalidatePath("/analysis/configs");
+export async function setDefaultConfigAction(id: string): Promise<{ error?: string }> {
+  try {
+    setDefaultConfig(id);
+    revalidatePath("/analysis/configs");
+    return {};
+  } catch {
+    return { error: "Failed to update default config." };
+  }
 }

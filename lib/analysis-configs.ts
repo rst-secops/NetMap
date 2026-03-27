@@ -109,14 +109,20 @@ export function updateConfig(id: string, data: UpdateConfigData): AnalysisConfig
     if (data.isDefault) {
       run("UPDATE analysis_configs SET is_default = 0");
     } else if (data.isDefault === false) {
-      // If unchecking default on the currently-default config, promote oldest other config
+      // If unchecking default on the currently-default config, promote oldest other config.
+      // If no other config exists, keep this one as default (override the requested change).
       const current = get<AnalysisConfigRow>("SELECT * FROM analysis_configs WHERE id = ?", id);
       if (current?.is_default === 1) {
         const oldest = get<AnalysisConfigRow>(
           "SELECT * FROM analysis_configs WHERE id != ? ORDER BY created_at ASC LIMIT 1",
           id
         );
-        if (oldest) run("UPDATE analysis_configs SET is_default = 1 WHERE id = ?", oldest.id);
+        if (oldest) {
+          run("UPDATE analysis_configs SET is_default = 1 WHERE id = ?", oldest.id);
+        } else {
+          // No other config — force isDefault to stay true so the SET clause keeps is_default = 1
+          data = { ...data, isDefault: true };
+        }
       }
     }
     // Build SET clause dynamically to avoid overwriting unchanged fields

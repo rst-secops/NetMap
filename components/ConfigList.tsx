@@ -63,7 +63,7 @@ function DefaultToggle({ id, isDefault }: { id: string; isDefault: boolean }) {
       title="Set as default"
       className="text-gray-500 hover:text-yellow-400 transition-colors disabled:opacity-50"
       onClick={() => {
-        startTransition(() => setDefaultConfigAction(id));
+        startTransition(async () => { await setDefaultConfigAction(id); });
       }}
     >
       <StarOutlineIcon />

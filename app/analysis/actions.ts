@@ -6,7 +6,7 @@ import { analysisProviderSchema, claudeConfigSchema, networkGraphSchema } from "
 import { getAllNodes } from "../../lib/dc-nodes";
 import { buildPrompt } from "../../lib/prompt-builder";
 import { saveAnalysisResult } from "../../lib/analysis-results";
-import { setSetting } from "../../lib/settings";
+import { setSetting, getSetting } from "../../lib/settings";
 import { saveApiCallLog } from "../../lib/api-call-logs";
 import { getConfigById, getDefaultConfig } from "../../lib/analysis-configs";
 
@@ -78,16 +78,14 @@ export interface RunAnalysisState {
   edgeCount?: number;
 }
 
-let analysisInProgress = false;
-
 export async function runAnalysisAction(
   _prev: RunAnalysisState,
   formData: FormData
 ): Promise<RunAnalysisState> {
-  if (analysisInProgress) {
+  if (getSetting("analysis_running") === "1") {
     return { error: "Analysis already running. Please wait." };
   }
-  analysisInProgress = true;
+  setSetting("analysis_running", "1");
   try {
     const allNodes = getAllNodes();
     const nodesWithResults = allNodes.filter((n) => n.results !== null);
@@ -211,6 +209,6 @@ export async function runAnalysisAction(
       edgeCount: parsed.edges.length,
     };
   } finally {
-    analysisInProgress = false;
+    setSetting("analysis_running", "0");
   }
 }

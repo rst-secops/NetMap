@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { deleteConfigAction } from "../app/analysis/configs/actions";
 
 function TrashIcon() {
@@ -33,6 +33,7 @@ export default function DeleteConfigButton({
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [isPending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
 
   return (
     <>
@@ -54,6 +55,7 @@ export default function DeleteConfigButton({
           Are you sure you want to delete <strong>{name}</strong>? This action
           cannot be undone.
         </p>
+        {error && <p className="mt-2 text-sm text-red-400">{error}</p>}
         <div className="mt-4 flex justify-end gap-3">
           <button
             type="button"
@@ -67,9 +69,14 @@ export default function DeleteConfigButton({
             disabled={isPending}
             className="rounded-lg bg-red-600 px-4 py-2 text-sm text-white hover:bg-red-500 disabled:opacity-50"
             onClick={() => {
+              setError(null);
               startTransition(async () => {
-                await deleteConfigAction(id);
-                dialogRef.current?.close();
+                const result = await deleteConfigAction(id);
+                if (result.error) {
+                  setError(result.error);
+                } else {
+                  dialogRef.current?.close();
+                }
               });
             }}
           >

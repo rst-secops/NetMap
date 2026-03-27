@@ -1,5 +1,5 @@
 import { nanoid } from "nanoid";
-import { query, get, run } from "./db";
+import { query, get, run, getDb } from "./db";
 import type { NetworkGraph } from "./schemas";
 
 interface AnalysisResultRow {
@@ -38,22 +38,25 @@ export function saveAnalysisResult(
   configName: string
 ): AnalysisResult {
   const id = nanoid();
-  run(
-    "INSERT INTO analysis_results (id, name, config_name, raw_response, graph_data) VALUES (?, ?, ?, ?, ?)",
-    id,
-    name,
-    configName,
-    rawResponse,
-    JSON.stringify(graphData)
-  );
 
-  // Enforce 100-result cap — delete oldest beyond the limit
-  run(
-    `DELETE FROM analysis_results WHERE id IN (
-      SELECT id FROM analysis_results ORDER BY created_at ASC
-      LIMIT MAX(0, (SELECT COUNT(*) FROM analysis_results) - 100)
-    )`
-  );
+  const doSave = getDb().transaction(() => {
+    run(
+      "INSERT INTO analysis_results (id, name, config_name, raw_response, graph_data) VALUES (?, ?, ?, ?, ?)",
+      id,
+      name,
+      configName,
+      rawResponse,
+      JSON.stringify(graphData)
+    );
+    // Enforce 100-result cap — delete oldest beyond the limit
+    run(
+      `DELETE FROM analysis_results WHERE id IN (
+        SELECT id FROM analysis_results ORDER BY created_at ASC
+        LIMIT MAX(0, (SELECT COUNT(*) FROM analysis_results) - 100)
+      )`
+    );
+  });
+  doSave();
 
   const row = get<AnalysisResultRow>(
     "SELECT * FROM analysis_results WHERE id = ?",
