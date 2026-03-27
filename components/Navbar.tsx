@@ -55,6 +55,12 @@ export default function Navbar() {
         >
           Data Collection Configuration
         </Link>
+        <Link
+          href="/analysis"
+          className="text-sm text-gray-300 hover:text-gray-100"
+        >
+          Data Analysis Configuration
+        </Link>
       </div>
       <div className="flex-1" />
       <button

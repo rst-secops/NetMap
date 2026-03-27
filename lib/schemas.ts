@@ -20,5 +20,26 @@ export const dcNodeCreateSchema = z.object({
   isEnabled: z.boolean().default(true),
 });
 
+export const analysisProviderSchema = z.object({
+  provider: z.enum(["claude"]),
+});
+
+export const claudeConfigSchema = z.object({
+  apiKey: z.string().min(1, "API key is required"),
+  model: z.enum([
+    "claude-sonnet-4-20250514",
+    "claude-haiku-4-5-20251001",
+    "claude-opus-4-20250514",
+  ]),
+  maxTokens: z.coerce.number().int().min(1).max(32768).default(4096),
+  baseUrl: z
+    .string()
+    .url("Must be a valid URL")
+    .or(z.literal(""))
+    .optional()
+    .default(""),
+});
+
 export type ScheduleInput = z.input<typeof scheduleSchema>;
 export type DcNodeCreateInput = z.input<typeof dcNodeCreateSchema>;
+export type ClaudeConfigInput = z.input<typeof claudeConfigSchema>;
