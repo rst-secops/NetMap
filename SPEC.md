@@ -8,21 +8,22 @@ We are developing an app that can capture and visualize the logical structure of
 
 - **Data Collection (DC)** – Reading configuration files, CDP and LLDP information, routing tables, and potentially other helpful data directly from the network components. We provide a default set of commands executed during data collection runs, stored as a JSON array in the database and editable during DC Node configuration. Data is captured via SSH sessions in which CLI commands are executed. Alternatively, API interfaces are used if available. The `dc_nodes` database table stores all DC Node credentials (see Configuration) and the results of the last collection run as JSON. Data Collection runs on a configurable schedule.
 
-- **Analysis** – The analysis of the collected information forms the basis for visualization. An internal model stores the identified network relationships and makes them available for visualization. The analysis can utilize AI functions from a private LLM infrastructure where it makes sense. It should also identify potential new data collection nodes and surface these findings via notifications in the navbar. Analysis results must be stored in a format natural to React Flow for efficient, smooth visualization.
+- **Analysis** – The analysis of the collected information forms the basis for visualization. Named, reusable analysis configurations allow different LLM providers and models to be selected per run. Analysis results are stored with a human-readable name (derived from the config name and timestamp) and can be browsed, compared, and deleted. The analysis should also identify potential new data collection nodes and surface these findings via notifications in the navbar. Analysis results must be stored in a format natural to React Flow for efficient, smooth visualization. Up to 100 results are retained; oldest are auto-deleted beyond the cap.
 
-- **Network Visualization** – Graphical display of captured network components and their relationships/connections. The visualization supports switching between Layer 2 and Layer 3 views using React Flow. Users can zoom in/out, pan, and click individual network nodes to display additional details.
+- **Network Visualization** – Graphical display of captured network components and their relationships/connections via the Network Maps viewer. Users can switch between stored analysis results using a dropdown, delete results, zoom/pan the canvas, and click nodes or edges for detailed metadata. Visualization is built with React Flow and uses dagre for automatic layout.
 
-- **Configuration** – Setup for collecting network information with the option to define SSH- or API-based DC Nodes. All saved DC Nodes and their credentials are stored for future data collection and queried on the next run. Includes a global schedule for data collection (daily/weekly, time of run) and a button to kick off a run immediately.
+- **Configuration** – Setup for collecting network information with the option to define SSH- or API-based DC Nodes. All saved DC Nodes and their credentials are stored for future data collection and queried on the next run. Includes a global schedule for data collection (daily/weekly, time of run) and a button to kick off a run immediately. Analysis configurations are managed separately under Data Analysis.
 
 ### Tech Stack
 
 - Next.js (App Router) + Bun runtime
 - TypeScript
-- TailwindCSS
+- TailwindCSS v4
 - SQLite via Bun's built-in SQLite client with raw SQL
 - ssh2 package for SSH-based data collection
-- Built-in fetch API for API-based data collection
+- Built-in fetch API for API-based data collection and LLM calls
 - React Flow (`@xyflow/react`) for visualization
+- dagre (`@dagrejs/dagre`) for automatic graph layout
 - Zod for input validation
 - nanoid for ID generation
 
@@ -83,6 +84,35 @@ Authentication is not required for now; may be implemented later.
 **Delete DC Node:**
 - Hard delete with confirmation
 
+### 3.3 Analysis Configuration Management
+
+**List of analysis configurations** (`/analysis/configs`)
+- Table with columns: name, provider, model, max tokens, default flag, edit and delete buttons
+- Star icon marks the default config; clicking a hollow star sets that config as default
+- "Run Analysis" card above the list: config selector dropdown + run button
+
+**Create / Edit an analysis configuration** (`/analysis/configs/new`, `/analysis/configs/[id]/edit`)
+- Fields: Config Name, LLM Provider (dropdown), Model (dropdown, updates when provider changes), Max Tokens, API Base URL (optional override), API Key (password field with masked display on edit), Set as Default (checkbox)
+- Edit page also shows the API call log for that config
+
+**Delete an analysis configuration:**
+- Hard delete with confirmation; last config cannot be deleted
+- If deleted config was the default, the oldest remaining config is promoted
+
+**Supported LLM providers:**
+- **Claude (Anthropic)** — models: Claude Sonnet 4, Claude Haiku 4.5, Claude Opus 4
+- **Google AI Studio** — models: Gemini 2.5 Flash, Gemini 2.5 Pro, Gemini 2.0 Flash
+
+### 3.4 Network Maps Viewer
+
+**Map viewer** (`/`)
+- Displays the most recent analysis result by default
+- Dropdown at top-left to switch between all stored results (named `<config> – YYYY-MM-DD HH:mm`)
+- Node/edge count and timestamp shown in the toolbar
+- Delete button at top-right: confirmation dialog, then deletes the selected result
+- Empty state with link to `/analysis/configs` when no results exist
+- Clicking a node or edge opens a side panel with full metadata
+
 ## 4. Non-Functional Requirements
 
 **Performance**
@@ -120,20 +150,65 @@ CREATE TABLE IF NOT EXISTS dc_nodes (
 );
 ```
 
-| Field | Type | Description |
-|-------|------|-------------|
-| id | TEXT | Unique identifier for each node (primary key, nanoid) |
-| node_type | TEXT | Node type: `'SSH'` or `'API'` |
-| node_display_name | TEXT | User-chosen display name |
-| host | TEXT | Node's IP address or hostname |
-| port | INTEGER | Connection port (default 22 for SSH) |
-| commands | TEXT | JSON array of CLI commands for data collection |
-| node_user | TEXT | SSH/API session username |
-| node_passwd | TEXT | SSH/API session password |
-| is_enabled | INTEGER | Enabled (`1`) or disabled (`0`) for the next collection run |
-| results | TEXT | JSON — SSH session output or API responses from last collection run |
-| created_at | TEXT | ISO 8601 timestamp of node creation |
-| updated_at | TEXT | ISO 8601 timestamp of last modification |
+#### settings
+
+```sql
+CREATE TABLE IF NOT EXISTS settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL,
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+```
+
+Seeded keys: `dc_schedule_type`, `dc_schedule_time`, `last_analysis_id`, `last_seen_analysis_id`.
+
+#### analysis_configs
+
+```sql
+CREATE TABLE IF NOT EXISTS analysis_configs (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE,
+  provider TEXT NOT NULL DEFAULT 'claude',
+  model TEXT NOT NULL DEFAULT 'claude-sonnet-4-20250514',
+  max_tokens INTEGER NOT NULL DEFAULT 4096,
+  base_url TEXT NOT NULL DEFAULT '',
+  api_key TEXT NOT NULL DEFAULT '',
+  is_default INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+```
+
+#### analysis_results
+
+```sql
+CREATE TABLE IF NOT EXISTS analysis_results (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL DEFAULT '',
+  config_name TEXT NOT NULL DEFAULT '',
+  raw_response TEXT NOT NULL,
+  graph_data TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+```
+
+Capped at 100 rows; oldest are deleted on insert beyond the limit.
+
+#### api_call_logs
+
+```sql
+CREATE TABLE IF NOT EXISTS api_call_logs (
+  id TEXT PRIMARY KEY,
+  provider TEXT NOT NULL,
+  model TEXT NOT NULL,
+  config_id TEXT NOT NULL DEFAULT '',
+  request_body TEXT NOT NULL,
+  response_status INTEGER NOT NULL,
+  response_body TEXT NOT NULL,
+  duration_ms INTEGER NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+```
 
 ### 5.2 Indexes
 
@@ -148,81 +223,125 @@ CREATE INDEX IF NOT EXISTS idx_dc_nodes_display_name ON dc_nodes(node_display_na
 **File:** `lib/db.ts`
 
 - Initialize Bun SQLite client with DB file (`data/app.db`)
+- Run `initSchema()` on first connection — creates all tables, applies `ALTER TABLE` migrations via `PRAGMA table_info`, seeds default settings, and migrates any legacy global Claude config into `analysis_configs`
 - Export helper functions:
   - `getDb()` – returns singleton DB connection
-  - Utility wrappers:
-    - `query<T>(sql, params?): T[]`
-    - `get<T>(sql, params?): T | undefined`
-    - `run(sql, params?)`
+  - `query<T>(sql, ...params): T[]`
+  - `get<T>(sql, ...params): T | undefined`
+  - `run(sql, ...params)`
 
 ### 6.2 DC Node Repository
 
 **File:** `lib/dc-nodes.ts`
 
-**TypeScript type:**
-
-```typescript
-export type DcNode = {
-  id: string;
-  nodeType: string;
-  nodeDisplayName: string;
-  host: string;
-  port: number;
-  commands: string;    // JSON array stored as string
-  nodeUser: string;
-  nodePasswd: string;
-  isEnabled: boolean;
-  results: string | null;
-  createdAt: string;
-  updatedAt: string;
-};
-```
-
-**Repository functions:**
-
 - `getAllNodes(): DcNode[]`
-- `getNodeById(id: string): DcNode | undefined`
-- `createNode(data: Omit<DcNode, 'id' | 'createdAt' | 'updatedAt'>): DcNode`
-- `updateNode(id: string, data: Partial<DcNode>): DcNode | undefined`
-- `deleteNode(id: string): void`
-- `toggleNodeEnabled(id: string, isEnabled: boolean): DcNode | undefined`
+- `getNodeById(id): DcNode | undefined`
+- `createNode(data): DcNode`
+- `updateNode(id, data): DcNode | undefined`
+- `deleteNode(id): void`
+- `toggleNodeEnabled(id, isEnabled): DcNode | undefined`
+
+### 6.3 Analysis Config Repository
+
+**File:** `lib/analysis-configs.ts`
+
+- `getAllConfigs(): AnalysisConfig[]`
+- `getConfigById(id): AnalysisConfig | undefined`
+- `getDefaultConfig(): AnalysisConfig | undefined`
+- `createConfig(data): AnalysisConfig` — clears all defaults first when `isDefault` is true; wrapped in a DB transaction
+- `updateConfig(id, data): AnalysisConfig | undefined` — dynamic SET clause; promotes oldest other config when unsetting default; transaction
+- `deleteConfig(id): void` — refuses to delete last config; promotes oldest other when deleting default; transaction
+- `setDefaultConfig(id): void` — transaction: clear all, set target
+
+### 6.4 Analysis Results Repository
+
+**File:** `lib/analysis-results.ts`
+
+- `saveAnalysisResult(rawResponse, graphData, name, configName): AnalysisResult` — inserts, then enforces 100-row cap
+- `getLatestAnalysisResult(): AnalysisResult | undefined`
+- `listAnalysisResults(): AnalysisResult[]` — newest first
+- `deleteAnalysisResult(id): void`
+
+### 6.5 API Call Logs
+
+**File:** `lib/api-call-logs.ts`
+
+- `saveApiCallLog(log): void`
+- `listApiCallLogs(limit?): ApiCallLog[]`
+- `listApiCallLogsByConfigId(configId, limit?): ApiCallLog[]`
+
+### 6.6 Prompt Builder
+
+**File:** `lib/prompt-builder.ts`
+
+Builds `systemPrompt` and `userMessage` from collected DC node data. Input budget is fixed at 400,000 characters (decoupled from LLM output token limit) to avoid truncating multi-node data.
 
 ## 7. Frontend – Pages & Components
 
 ### 7.1 Routes
 
-Next.js App Router structure:
-
-- `/` – Landing page showing current network topology visualization
-- `/dc-nodes` – List of configured Data Collection Nodes
+```
+/                              – Network Maps viewer (map + result selector)
+/dc-nodes                      – DC Node list
+/dc-nodes/new                  – Create DC Node
+/dc-nodes/[id]                 – View DC Node + last collection results
+/dc-nodes/[id]/edit            – Edit DC Node
+/analysis                      – Redirects to /analysis/configs
+/analysis/configs              – Analysis config list + Run Analysis card
+/analysis/configs/new          – Create analysis config
+/analysis/configs/[id]/edit    – Edit analysis config + API call log
+```
 
 ### 7.2 Layout & Navigation
 
 - Global layout: `app/layout.tsx`
-  - Header with app name ("NetMap") and theme toggle
-  - Navbar with links to home (visualization) and DC Nodes management
+- Navbar (left to right): NetMap logo → **Network Maps** (`/`) → **Data Collection** (`/dc-nodes`) → **Data Analysis** (`/analysis/configs`)
+- Right side of navbar: notification bell (new analysis indicator)
 
 ### 7.3 Components
 
-**`components/NodeList.tsx`**
-- Props: `nodes: { id, nodeDisplayName, host, nodeType, isEnabled }[]`
-- Renders table with toggle switches and edit/delete buttons
-- Collection run schedule config and "Run Collection Now" button above the table
+| Component | Description |
+|---|---|
+| `NetworkMap` | React Flow canvas with dagre auto-layout, custom device nodes, side panel for node/edge metadata |
+| `MapViewer` | Client wrapper: result selector dropdown, delete button + dialog, passes selected graph to `NetworkMap` |
+| `ConfigList` | Table of analysis configs with default-star toggle, edit link, delete button |
+| `ConfigForm` | Create/edit form for analysis configs; provider dropdown drives model list dynamically |
+| `DeleteConfigButton` | Confirmation dialog + `deleteConfigAction` |
+| `RunAnalysisCard` | Config selector + run button, shows last result info |
+| `ApiCallLogsCard` | Collapsible list of API calls with request/response JSON, status badge, duration |
+| `NodeList` | Table of DC nodes with enable toggle, edit link, delete button |
+| `NodeForm` | Create/edit form for DC nodes |
+| `DeleteNodeButton` | Confirmation dialog + `deleteNodeAction` |
+| `EnableToggle` | Checkbox toggle for `isEnabled` |
+| `ScheduleCard` | Data collection schedule configuration |
 
-**`components/EnableToggle.tsx`**
-- Switch/checkbox for `isEnabled`
+## 8. Analysis – LLM Integration
 
-**`components/DeleteNodeButton.tsx`**
-- Confirms via dialog, then calls delete
+### 8.1 API Call Routing (`app/analysis/actions.ts`)
 
-## 8. Styling (TailwindCSS)
+`runAnalysisAction` reads `configId` from form data (falls back to default config), builds the prompt via `buildPrompt()`, then routes to the correct LLM API:
+
+**Claude (Anthropic)**
+- Endpoint: `POST {baseUrl}/v1/messages`
+- Auth: `x-api-key` header + `anthropic-version: 2023-06-01`
+- Request: `{ model, max_tokens, system, messages: [{role: "user", content}] }`
+- Response text: `body.content[0].text`
+
+**Google AI Studio**
+- Endpoint: `POST {baseUrl}/v1beta/models/{model}:generateContent`
+- Auth: `x-goog-api-key` header
+- Request: `{ systemInstruction: {parts: [{text}]}, contents: [{role: "user", parts: [{text}]}], generationConfig: {maxOutputTokens} }`
+- Response text: `body.candidates[0].content.parts[0].text`
+
+Both paths log the call to `api_call_logs`, strip markdown fences from the response, validate against `networkGraphSchema`, and save the result.
+
+## 9. Styling (TailwindCSS)
 
 - TailwindCSS v4 with PostCSS plugin (configured via `@tailwindcss/postcss`)
 - Minimal design: neutral background, card-like containers
-- `@tailwindcss/typography` for prose styling of read-only content
 - Dark theme as default
 
-## 9. Security Considerations
+## 10. Security Considerations
 
 **Authentication/Authorization**
 - Not required at this stage
@@ -230,19 +349,21 @@ Next.js App Router structure:
 **Input Validation**
 - Sanitize all user input during DC Node creation and updates
 - Validate IP addresses, hostnames, and port numbers via Zod schemas
+- Analysis config inputs validated via `analysisConfigSchema`
 
 **Credential Storage**
-- SSH/API credentials stored in plaintext in SQLite for now
+- SSH/API credentials and LLM API keys stored in plaintext in SQLite for now
 - Database file should not be committed to version control
 
-## 10. Development Workflow
+## 11. Development Workflow
 
 1. Initialize Next.js app with Bun & TypeScript
 2. Set up TailwindCSS
-3. Implement SQLite DB initialization (e.g., `scripts/init-db.ts` or auto-migration on first `getDb()` call)
+3. Implement SQLite DB initialization (auto-migration on first `getDb()` call)
 4. Build DB helpers and DC Node repository
 5. Build DC Nodes management pages (list, create, edit)
 6. Build home page with React Flow network visualization
 7. Implement data collection engine (SSH/API)
-8. Implement analysis layer
-9. Add polish (loading states, toast messages, error handling)
+8. Implement analysis layer with named configs and multi-provider support
+9. Build Network Maps viewer with result switching and deletion
+10. Add polish (loading states, toast messages, error handling)
