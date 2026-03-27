@@ -40,6 +40,29 @@ export const claudeConfigSchema = z.object({
     .default(""),
 });
 
+export const networkNodeSchema = z.object({
+  id: z.string(),
+  type: z.enum(["router", "switch", "ap", "host", "vlan", "unknown"]),
+  label: z.string(),
+  data: z.record(z.string(), z.unknown()).optional().default({}),
+});
+
+export const networkEdgeSchema = z.object({
+  id: z.string(),
+  source: z.string(),
+  target: z.string(),
+  label: z.string().optional(),
+  data: z.record(z.string(), z.unknown()).optional().default({}),
+});
+
+export const networkGraphSchema = z.object({
+  nodes: z.array(networkNodeSchema),
+  edges: z.array(networkEdgeSchema),
+});
+
 export type ScheduleInput = z.input<typeof scheduleSchema>;
 export type DcNodeCreateInput = z.input<typeof dcNodeCreateSchema>;
 export type ClaudeConfigInput = z.input<typeof claudeConfigSchema>;
+export type NetworkGraph = z.output<typeof networkGraphSchema>;
+export type NetworkNode = z.output<typeof networkNodeSchema>;
+export type NetworkEdge = z.output<typeof networkEdgeSchema>;

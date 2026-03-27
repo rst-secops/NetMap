@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { getLatestAnalysisResult } from "../lib/analysis-results";
+import { getSetting } from "../lib/settings";
 
 function LogoIcon() {
   return (
@@ -42,6 +44,10 @@ function BellIcon() {
 }
 
 export default function Navbar() {
+  const latest = getLatestAnalysisResult();
+  const lastSeen = getSetting("last_seen_analysis_id") ?? "";
+  const hasNewAnalysis = !!latest && latest.id !== lastSeen;
+
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 flex h-14 items-center border-b border-gray-800 bg-gray-900 px-4">
       <div className="flex items-center gap-6">
@@ -69,6 +75,12 @@ export default function Navbar() {
         className="relative text-gray-400 hover:text-gray-100"
       >
         <BellIcon />
+        {hasNewAnalysis && (
+          <span
+            className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-red-500"
+            aria-hidden="true"
+          />
+        )}
       </button>
     </nav>
   );
