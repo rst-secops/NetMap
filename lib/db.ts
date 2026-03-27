@@ -54,6 +54,33 @@ function initSchema(database: Database): void {
     )
   `);
 
+  database.run(`
+    CREATE TABLE IF NOT EXISTS analysis_configs (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL UNIQUE,
+      provider TEXT NOT NULL DEFAULT 'claude',
+      model TEXT NOT NULL DEFAULT 'claude-sonnet-4-20250514',
+      max_tokens INTEGER NOT NULL DEFAULT 4096,
+      base_url TEXT NOT NULL DEFAULT '',
+      api_key TEXT NOT NULL DEFAULT '',
+      is_default INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+
+  // Add columns to existing tables — check via PRAGMA first for compatibility
+  const arCols = database.query("PRAGMA table_info(analysis_results)").all() as { name: string }[];
+  const arColNames = new Set(arCols.map((c) => c.name));
+  if (!arColNames.has("name"))
+    database.run("ALTER TABLE analysis_results ADD COLUMN name TEXT NOT NULL DEFAULT ''");
+  if (!arColNames.has("config_name"))
+    database.run("ALTER TABLE analysis_results ADD COLUMN config_name TEXT NOT NULL DEFAULT ''");
+
+  const aclCols = database.query("PRAGMA table_info(api_call_logs)").all() as { name: string }[];
+  if (!aclCols.some((c) => c.name === "config_id"))
+    database.run("ALTER TABLE api_call_logs ADD COLUMN config_id TEXT NOT NULL DEFAULT ''");
+
   // Seed default schedule settings
   database.run(
     "INSERT OR IGNORE INTO settings (key, value) VALUES ('dc_schedule_type', 'daily')"
@@ -67,6 +94,21 @@ function initSchema(database: Database): void {
   database.run(
     "INSERT OR IGNORE INTO settings (key, value) VALUES ('last_seen_analysis_id', '')"
   );
+
+  // Migrate existing global Claude config from settings into analysis_configs as "Default"
+  database.run(`
+    INSERT OR IGNORE INTO analysis_configs (id, name, provider, model, max_tokens, base_url, api_key, is_default)
+    SELECT
+      'default-migrated',
+      'Default',
+      COALESCE(MAX(CASE WHEN key = 'analysis_provider' THEN value END), 'claude'),
+      COALESCE(MAX(CASE WHEN key = 'analysis_claude_model' THEN value END), 'claude-sonnet-4-20250514'),
+      CAST(COALESCE(MAX(CASE WHEN key = 'analysis_claude_max_tokens' THEN value END), '4096') AS INTEGER),
+      COALESCE(MAX(CASE WHEN key = 'analysis_claude_base_url' THEN value END), ''),
+      COALESCE(MAX(CASE WHEN key = 'analysis_claude_api_key' THEN value END), ''),
+      1
+    FROM settings
+  `);
 }
 
 export function getDb(): Database {

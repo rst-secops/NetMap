@@ -6,6 +6,7 @@ interface ApiCallLogRow {
   created_at: string;
   provider: string;
   model: string;
+  config_id: string;
   request_body: string;
   response_status: number;
   response_body: string;
@@ -17,6 +18,7 @@ export interface ApiCallLog {
   createdAt: string;
   provider: string;
   model: string;
+  configId: string;
   requestBody: string;
   responseStatus: number;
   responseBody: string;
@@ -29,6 +31,7 @@ function toLog(row: ApiCallLogRow): ApiCallLog {
     createdAt: row.created_at,
     provider: row.provider,
     model: row.model,
+    configId: row.config_id,
     requestBody: row.request_body,
     responseStatus: row.response_status,
     responseBody: row.response_body,
@@ -36,18 +39,30 @@ function toLog(row: ApiCallLogRow): ApiCallLog {
   };
 }
 
-export function saveApiCallLog(log: Omit<ApiCallLog, "id" | "createdAt">): void {
+export function saveApiCallLog(
+  log: Omit<ApiCallLog, "id" | "createdAt">
+): void {
   run(
-    `INSERT INTO api_call_logs (id, provider, model, request_body, response_status, response_body, duration_ms)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO api_call_logs (id, provider, model, config_id, request_body, response_status, response_body, duration_ms)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     nanoid(),
     log.provider,
     log.model,
+    log.configId,
     log.requestBody,
     log.responseStatus,
     log.responseBody,
     log.durationMs
   );
+}
+
+export function listApiCallLogsByConfigId(configId: string, limit = 20): ApiCallLog[] {
+  const rows = query<ApiCallLogRow>(
+    "SELECT * FROM api_call_logs WHERE config_id = ? ORDER BY created_at DESC LIMIT ?",
+    configId,
+    limit
+  );
+  return rows.map(toLog);
 }
 
 export function listApiCallLogs(limit = 20): ApiCallLog[] {

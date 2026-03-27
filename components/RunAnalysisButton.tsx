@@ -6,7 +6,7 @@ import {
   type RunAnalysisState,
 } from "../app/analysis/actions";
 
-export default function RunAnalysisButton() {
+export default function RunAnalysisButton({ configId }: { configId?: string } = {}) {
   const [state, formAction, isPending] = useActionState<
     RunAnalysisState,
     FormData
@@ -15,6 +15,7 @@ export default function RunAnalysisButton() {
   return (
     <div>
       <form action={formAction}>
+        {configId && <input type="hidden" name="configId" value={configId} />}
         <button
           type="submit"
           disabled={isPending}

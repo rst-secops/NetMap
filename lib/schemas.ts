@@ -60,9 +60,25 @@ export const networkGraphSchema = z.object({
   edges: z.array(networkEdgeSchema),
 });
 
+export const analysisConfigSchema = z.object({
+  name: z.string().min(1, "Name is required").max(100),
+  provider: z.enum(["claude", "google"]),
+  model: z.string().min(1, "Model is required"),
+  maxTokens: z.coerce.number().int().min(1).max(65536).default(4096),
+  baseUrl: z
+    .string()
+    .url("Must be a valid URL")
+    .or(z.literal(""))
+    .optional()
+    .default(""),
+  apiKey: z.string(),
+  isDefault: z.boolean().default(false),
+});
+
 export type ScheduleInput = z.input<typeof scheduleSchema>;
 export type DcNodeCreateInput = z.input<typeof dcNodeCreateSchema>;
 export type ClaudeConfigInput = z.input<typeof claudeConfigSchema>;
+export type AnalysisConfigInput = z.input<typeof analysisConfigSchema>;
 export type NetworkGraph = z.output<typeof networkGraphSchema>;
 export type NetworkNode = z.output<typeof networkNodeSchema>;
 export type NetworkEdge = z.output<typeof networkEdgeSchema>;
