@@ -32,12 +32,40 @@ function initSchema(database: Database): void {
     )
   `);
 
+  database.run(`
+    CREATE TABLE IF NOT EXISTS analysis_results (
+      id TEXT PRIMARY KEY,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      raw_response TEXT NOT NULL,
+      graph_data TEXT NOT NULL
+    )
+  `);
+
+  database.run(`
+    CREATE TABLE IF NOT EXISTS api_call_logs (
+      id TEXT PRIMARY KEY,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      provider TEXT NOT NULL,
+      model TEXT NOT NULL,
+      request_body TEXT NOT NULL,
+      response_status INTEGER NOT NULL,
+      response_body TEXT NOT NULL,
+      duration_ms INTEGER NOT NULL
+    )
+  `);
+
   // Seed default schedule settings
   database.run(
     "INSERT OR IGNORE INTO settings (key, value) VALUES ('dc_schedule_type', 'daily')"
   );
   database.run(
     "INSERT OR IGNORE INTO settings (key, value) VALUES ('dc_schedule_time', '02:00')"
+  );
+  database.run(
+    "INSERT OR IGNORE INTO settings (key, value) VALUES ('last_analysis_id', '')"
+  );
+  database.run(
+    "INSERT OR IGNORE INTO settings (key, value) VALUES ('last_seen_analysis_id', '')"
   );
 }
 

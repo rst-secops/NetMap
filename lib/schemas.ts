@@ -20,5 +20,49 @@ export const dcNodeCreateSchema = z.object({
   isEnabled: z.boolean().default(true),
 });
 
+export const analysisProviderSchema = z.object({
+  provider: z.enum(["claude"]),
+});
+
+export const claudeConfigSchema = z.object({
+  apiKey: z.string().min(1, "API key is required"),
+  model: z.enum([
+    "claude-sonnet-4-20250514",
+    "claude-haiku-4-5-20251001",
+    "claude-opus-4-20250514",
+  ]),
+  maxTokens: z.coerce.number().int().min(1).max(32768).default(4096),
+  baseUrl: z
+    .string()
+    .url("Must be a valid URL")
+    .or(z.literal(""))
+    .optional()
+    .default(""),
+});
+
+export const networkNodeSchema = z.object({
+  id: z.string(),
+  type: z.enum(["router", "switch", "ap", "host", "vlan", "unknown"]),
+  label: z.string(),
+  data: z.record(z.string(), z.unknown()).optional().default({}),
+});
+
+export const networkEdgeSchema = z.object({
+  id: z.string(),
+  source: z.string(),
+  target: z.string(),
+  label: z.string().optional(),
+  data: z.record(z.string(), z.unknown()).optional().default({}),
+});
+
+export const networkGraphSchema = z.object({
+  nodes: z.array(networkNodeSchema),
+  edges: z.array(networkEdgeSchema),
+});
+
 export type ScheduleInput = z.input<typeof scheduleSchema>;
 export type DcNodeCreateInput = z.input<typeof dcNodeCreateSchema>;
+export type ClaudeConfigInput = z.input<typeof claudeConfigSchema>;
+export type NetworkGraph = z.output<typeof networkGraphSchema>;
+export type NetworkNode = z.output<typeof networkNodeSchema>;
+export type NetworkEdge = z.output<typeof networkEdgeSchema>;
