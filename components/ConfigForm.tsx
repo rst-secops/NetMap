@@ -160,7 +160,7 @@ export default function ConfigForm({ action, defaultValues }: ConfigFormProps) {
           name="maxTokens"
           type="number"
           min={1}
-          max={65536}
+          max={500000}
           defaultValue={defaultValues?.maxTokens ?? 4096}
           className="mt-1 rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm"
         />

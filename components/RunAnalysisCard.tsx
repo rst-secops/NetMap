@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useActionState } from "react";
+import { useRouter } from "next/navigation";
 import { runAnalysisAction, type RunAnalysisState } from "../app/analysis/actions";
 
 interface ConfigOption {
@@ -17,12 +18,19 @@ export default function RunAnalysisCard({
   configs: ConfigOption[];
   latestResultInfo?: string;
 }) {
+  const router = useRouter();
   const defaultConfig = configs.find((c) => c.isDefault) ?? configs[0];
   const [selectedConfigId, setSelectedConfigId] = useState(defaultConfig?.id ?? "");
   const [state, formAction, isPending] = useActionState<RunAnalysisState, FormData>(
     runAnalysisAction,
     {}
   );
+
+  useEffect(() => {
+    if (state.success) {
+      router.push("/");
+    }
+  }, [state.success, router]);
 
   return (
     <div className="rounded-lg border border-gray-800 bg-gray-900 p-6">

@@ -2,15 +2,17 @@
 
 import { useEffect, useRef, useTransition, useState } from "react";
 import Link from "next/link";
-import NetworkMap from "./NetworkMap";
-import { markAnalysisSeenAction, deleteAnalysisResultAction } from "../app/actions";
+import NetworkMap, { type NetworkMapHandle } from "./NetworkMap";
+import { markAnalysisSeenAction, deleteAnalysisResultAction, saveLayoutAction } from "../app/actions";
 import type { NetworkGraph } from "../lib/schemas";
+import type { NodePositions } from "../lib/analysis-results";
 
 interface ResultSummary {
   id: string;
   name: string;
   createdAt: string;
   graphData: NetworkGraph;
+  layoutData: NodePositions | null;
 }
 
 interface MapViewerProps {
@@ -31,7 +33,9 @@ function TrashIcon() {
 export default function MapViewer({ results }: MapViewerProps) {
   const [selectedId, setSelectedId] = useState<string | null>(results[0]?.id ?? null);
   const [isPending, startTransition] = useTransition();
+  const [isSavePending, startSaveTransition] = useTransition();
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const mapRef = useRef<NetworkMapHandle>(null);
 
   // Reset selection when results list changes (e.g. after deletion)
   useEffect(() => {
@@ -90,6 +94,20 @@ export default function MapViewer({ results }: MapViewerProps) {
 
         <div className="flex-1" />
 
+        {/* Save Layout button */}
+        <button
+          type="button"
+          disabled={isSavePending}
+          className="flex items-center gap-1.5 rounded-lg border border-gray-700 px-3 py-1.5 text-sm text-gray-400 hover:border-blue-700 hover:text-blue-400 transition-colors disabled:opacity-50"
+          onClick={() => {
+            if (!selectedId || !mapRef.current) return;
+            const positions = mapRef.current.getPositions();
+            startSaveTransition(() => saveLayoutAction(selectedId, positions));
+          }}
+        >
+          {isSavePending ? "Saving…" : "Save Layout"}
+        </button>
+
         {/* Delete button */}
         <button
           type="button"
@@ -103,7 +121,7 @@ export default function MapViewer({ results }: MapViewerProps) {
       </div>
 
       <div className="flex-1 overflow-hidden">
-        <NetworkMap key={selectedId} graph={current.graphData} />
+        <NetworkMap key={selectedId} graph={current.graphData} savedPositions={current.layoutData} ref={mapRef} />
       </div>
 
       {/* Delete confirmation dialog */}

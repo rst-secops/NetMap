@@ -2,6 +2,8 @@ import { nanoid } from "nanoid";
 import { query, get, run, getDb } from "./db";
 import type { NetworkGraph } from "./schemas";
 
+export type NodePositions = Record<string, { x: number; y: number }>;
+
 interface AnalysisResultRow {
   id: string;
   created_at: string;
@@ -9,6 +11,7 @@ interface AnalysisResultRow {
   config_name: string;
   raw_response: string;
   graph_data: string;
+  layout_data: string | null;
 }
 
 export interface AnalysisResult {
@@ -18,6 +21,7 @@ export interface AnalysisResult {
   configName: string;
   rawResponse: string;
   graphData: NetworkGraph;
+  layoutData: NodePositions | null;
 }
 
 function toResult(row: AnalysisResultRow): AnalysisResult {
@@ -28,6 +32,7 @@ function toResult(row: AnalysisResultRow): AnalysisResult {
     configName: row.config_name,
     rawResponse: row.raw_response,
     graphData: JSON.parse(row.graph_data) as NetworkGraph,
+    layoutData: row.layout_data ? (JSON.parse(row.layout_data) as NodePositions) : null,
   };
 }
 
@@ -81,4 +86,12 @@ export function listAnalysisResults(): AnalysisResult[] {
 
 export function deleteAnalysisResult(id: string): void {
   run("DELETE FROM analysis_results WHERE id = ?", id);
+}
+
+export function saveLayoutData(id: string, positions: NodePositions): void {
+  run(
+    "UPDATE analysis_results SET layout_data = ? WHERE id = ?",
+    JSON.stringify(positions),
+    id
+  );
 }

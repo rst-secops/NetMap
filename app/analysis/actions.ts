@@ -187,10 +187,12 @@ export async function runAnalysisAction(
       const json = JSON.parse(stripped);
       const validation = networkGraphSchema.safeParse(json);
       if (!validation.success) {
+        const providerLabel = config.provider === "google" ? "Google AI" : "Claude";
         return {
           error:
-            "Claude returned invalid graph structure: " +
-            (validation.error.issues[0]?.message ?? "unknown error"),
+            `${providerLabel} returned invalid graph structure: ` +
+            (validation.error.issues[0]?.message ?? "unknown error") +
+            (validation.error.issues[0]?.path ? ` (at ${validation.error.issues[0].path.join(".")})` : ""),
         };
       }
       parsed = validation.data;

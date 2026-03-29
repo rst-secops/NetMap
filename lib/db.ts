@@ -76,6 +76,8 @@ function initSchema(database: Database): void {
     database.run("ALTER TABLE analysis_results ADD COLUMN name TEXT NOT NULL DEFAULT ''");
   if (!arColNames.has("config_name"))
     database.run("ALTER TABLE analysis_results ADD COLUMN config_name TEXT NOT NULL DEFAULT ''");
+  if (!arColNames.has("layout_data"))
+    database.run("ALTER TABLE analysis_results ADD COLUMN layout_data TEXT");
 
   const aclCols = database.query("PRAGMA table_info(api_call_logs)").all() as { name: string }[];
   if (!aclCols.some((c) => c.name === "config_id"))

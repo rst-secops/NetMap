@@ -42,7 +42,7 @@ export const claudeConfigSchema = z.object({
 
 export const networkNodeSchema = z.object({
   id: z.string(),
-  type: z.enum(["router", "switch", "ap", "host", "vlan", "unknown"]),
+  type: z.enum(["router", "switch", "ap", "host", "vlan", "unknown"]).catch("unknown"),
   label: z.string(),
   data: z.record(z.string(), z.unknown()).optional().default({}),
 });
@@ -64,7 +64,7 @@ export const analysisConfigSchema = z.object({
   name: z.string().min(1, "Name is required").max(100),
   provider: z.enum(["claude", "google"]),
   model: z.string().min(1, "Model is required"),
-  maxTokens: z.coerce.number().int().min(1).max(65536).default(4096),
+  maxTokens: z.coerce.number().int().min(1).max(500000).default(4096),
   baseUrl: z
     .string()
     .url("Must be a valid URL")

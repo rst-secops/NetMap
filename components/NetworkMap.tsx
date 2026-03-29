@@ -1,6 +1,6 @@
 "use client";
 
-import React, { memo, useMemo, useState } from "react";
+import React, { forwardRef, memo, useImperativeHandle, useMemo, useState } from "react";
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -18,6 +18,9 @@ import {
 import "@xyflow/react/dist/style.css";
 import dagre from "@dagrejs/dagre";
 import type { NetworkGraph } from "../lib/schemas";
+import type { NodePositions } from "../lib/analysis-results";
+
+export type NetworkMapHandle = { getPositions: () => NodePositions };
 
 // ─── Layout ──────────────────────────────────────────────────────────────────
 
@@ -163,7 +166,8 @@ function DataPanel({ data }: { data: Record<string, unknown> }) {
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-function NetworkMapInner({ graph }: { graph: NetworkGraph }) {
+const NetworkMapInner = forwardRef<NetworkMapHandle, { graph: NetworkGraph; savedPositions?: NodePositions | null }>(
+function NetworkMapInner({ graph, savedPositions }, ref) {
   const [selection, setSelection] = useState<Selection | null>(null);
 
   const { nodes: initialNodes, edges: initialEdges } = useMemo(() => {
@@ -178,7 +182,7 @@ function NetworkMapInner({ graph }: { graph: NetworkGraph }) {
         id: n.id,
         type: "deviceNode",
         data: { label: n.label, nodeType: n.type, extraData: n.data ?? {} },
-        position: { x: 0, y: 0 },
+        position: savedPositions?.[n.id] ?? { x: 0, y: 0 },
       }));
 
     // Filter edges that reference filtered-out VLAN nodes.
@@ -198,11 +202,19 @@ function NetworkMapInner({ graph }: { graph: NetworkGraph }) {
         },
       }));
 
-    return getLayoutedElements(rawNodes, rawEdges);
-  }, [graph]);
+    return savedPositions ? { nodes: rawNodes, edges: rawEdges } : getLayoutedElements(rawNodes, rawEdges);
+  }, [graph, savedPositions]);
 
   const [nodes, , onNodesChange] = useNodesState(initialNodes);
   const [edges, , onEdgesChange] = useEdgesState(initialEdges);
+
+  useImperativeHandle(ref, () => ({
+    getPositions: () => {
+      const positions: NodePositions = {};
+      nodes.forEach((n) => { positions[n.id] = n.position; });
+      return positions;
+    },
+  }));
 
   // Build an id→label lookup for edge source/target display
   const nodeLabel = useMemo(() => {
@@ -276,12 +288,21 @@ function NetworkMapInner({ graph }: { graph: NetworkGraph }) {
       )}
     </div>
   );
-}
+});
+NetworkMapInner.displayName = "NetworkMapInner";
 
-export default function NetworkMap({ graph }: { graph: NetworkGraph }) {
+export default function NetworkMap({
+  graph,
+  savedPositions,
+  ref,
+}: {
+  graph: NetworkGraph;
+  savedPositions?: NodePositions | null;
+  ref?: React.Ref<NetworkMapHandle>;
+}) {
   return (
     <ReactFlowProvider>
-      <NetworkMapInner graph={graph} />
+      <NetworkMapInner graph={graph} savedPositions={savedPositions} ref={ref} />
     </ReactFlowProvider>
   );
 }
