@@ -83,6 +83,10 @@ function initSchema(database: Database): void {
   if (!aclCols.some((c) => c.name === "config_id"))
     database.run("ALTER TABLE api_call_logs ADD COLUMN config_id TEXT NOT NULL DEFAULT ''");
 
+  const acCols = database.query("PRAGMA table_info(analysis_configs)").all() as { name: string }[];
+  if (!acCols.some((c) => c.name === "skip_vlans"))
+    database.run("ALTER TABLE analysis_configs ADD COLUMN skip_vlans INTEGER NOT NULL DEFAULT 0");
+
   // Seed default schedule settings
   database.run(
     "INSERT OR IGNORE INTO settings (key, value) VALUES ('dc_schedule_type', 'daily')"

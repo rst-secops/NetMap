@@ -4,6 +4,7 @@ import RunAnalysisCard from "../../../components/RunAnalysisCard";
 import ConfigList from "../../../components/ConfigList";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 900;
 
 export default function AnalysisConfigsPage() {
   const latestResult = getLatestAnalysisResult();

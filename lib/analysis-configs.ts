@@ -10,6 +10,7 @@ interface AnalysisConfigRow {
   base_url: string;
   api_key: string;
   is_default: number;
+  skip_vlans: number;
   created_at: string;
   updated_at: string;
 }
@@ -23,6 +24,7 @@ export interface AnalysisConfig {
   baseUrl: string;
   apiKey: string;
   isDefault: boolean;
+  skipVlans: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -37,6 +39,7 @@ function toConfig(row: AnalysisConfigRow): AnalysisConfig {
     baseUrl: row.base_url,
     apiKey: row.api_key,
     isDefault: row.is_default === 1,
+    skipVlans: row.skip_vlans === 1,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -67,6 +70,7 @@ interface ConfigData {
   baseUrl: string;
   apiKey: string;
   isDefault: boolean;
+  skipVlans: boolean;
 }
 
 export function createConfig(data: ConfigData): AnalysisConfig {
@@ -77,8 +81,8 @@ export function createConfig(data: ConfigData): AnalysisConfig {
       run("UPDATE analysis_configs SET is_default = 0");
     }
     run(
-      `INSERT INTO analysis_configs (id, name, provider, model, max_tokens, base_url, api_key, is_default)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO analysis_configs (id, name, provider, model, max_tokens, base_url, api_key, is_default, skip_vlans)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       id,
       data.name,
       data.provider,
@@ -86,7 +90,8 @@ export function createConfig(data: ConfigData): AnalysisConfig {
       data.maxTokens,
       data.baseUrl,
       data.apiKey,
-      data.isDefault ? 1 : 0
+      data.isDefault ? 1 : 0,
+      data.skipVlans ? 1 : 0
     );
   });
 
@@ -102,6 +107,7 @@ interface UpdateConfigData {
   baseUrl?: string;
   apiKey?: string;
   isDefault?: boolean;
+  skipVlans?: boolean;
 }
 
 export function updateConfig(id: string, data: UpdateConfigData): AnalysisConfig | undefined {
@@ -136,6 +142,7 @@ export function updateConfig(id: string, data: UpdateConfigData): AnalysisConfig
     if (data.baseUrl !== undefined) { fields.push("base_url = ?"); params.push(data.baseUrl); }
     if (data.apiKey !== undefined) { fields.push("api_key = ?"); params.push(data.apiKey); }
     if (data.isDefault !== undefined) { fields.push("is_default = ?"); params.push(data.isDefault ? 1 : 0); }
+    if (data.skipVlans !== undefined) { fields.push("skip_vlans = ?"); params.push(data.skipVlans ? 1 : 0); }
 
     if (fields.length === 0) return;
 

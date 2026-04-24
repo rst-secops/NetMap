@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useActionState } from "react";
 import { useRouter } from "next/navigation";
-import { runAnalysisAction, type RunAnalysisState } from "../app/analysis/actions";
+import { runAnalysisAction, getAnalysisStatusAction, type RunAnalysisState } from "../app/analysis/actions";
 
 interface ConfigOption {
   id: string;
@@ -25,12 +25,38 @@ export default function RunAnalysisCard({
     runAnalysisAction,
     {}
   );
+  const [backgroundRunning, setBackgroundRunning] = useState(false);
+  const [backgroundError, setBackgroundError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (state.success) {
-      router.push("/");
-    }
-  }, [state.success, router]);
+    getAnalysisStatusAction().then((status) => {
+      if (status.running) setBackgroundRunning(true);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (state.success) router.push("/");
+    if (state.started) setBackgroundRunning(true);
+  }, [state.success, state.started, router]);
+
+  useEffect(() => {
+    if (!backgroundRunning) return;
+    const id = setInterval(async () => {
+      const status = await getAnalysisStatusAction();
+      if (!status.running) {
+        clearInterval(id);
+        setBackgroundRunning(false);
+        if (status.error) {
+          setBackgroundError(status.error);
+        } else {
+          router.push("/");
+        }
+      }
+    }, 3000);
+    return () => clearInterval(id);
+  }, [backgroundRunning, router]);
+
+  const isAnalyzing = isPending || backgroundRunning;
 
   return (
     <div className="rounded-lg border border-gray-800 bg-gray-900 p-6">
@@ -62,21 +88,26 @@ export default function RunAnalysisCard({
           </select>
           <button
             type="submit"
-            disabled={isPending}
+            disabled={isAnalyzing}
             className="rounded-lg bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-500 disabled:opacity-50"
           >
-            {isPending ? "Analyzing..." : "Run Analysis"}
+            {isAnalyzing ? "Analyzing…" : "Run Analysis"}
           </button>
         </form>
       )}
 
+      {backgroundRunning && (
+        <p className="mt-3 text-sm text-blue-400">
+          Analysis running in background — this may take several minutes for local models.
+        </p>
+      )}
       {state.success && (
         <p className="mt-3 text-sm text-green-400">
           Analysis complete — {state.nodeCount} nodes, {state.edgeCount} edges.
         </p>
       )}
-      {state.error && (
-        <p className="mt-3 text-sm text-red-400">{state.error}</p>
+      {(state.error || backgroundError) && (
+        <p className="mt-3 text-sm text-red-400">{state.error ?? backgroundError}</p>
       )}
       {latestResultInfo && (
         <p className="mt-4 text-xs text-gray-500">{latestResultInfo}</p>
