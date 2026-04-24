@@ -58,3 +58,65 @@ Rules:
 
   return { systemPrompt, userMessage };
 }
+
+export function buildOllamaPrompt(
+  nodes: DcNode[],
+  maxTokens: number,
+  skipVlans: boolean
+): { systemPrompt: string; userMessage: string } {
+  const systemPrompt = `You are a network topology analyst. Output ONLY a valid JSON object — no prose, no markdown, no explanation.`;
+
+  const charBudget = 400_000;
+  let usedChars = 0;
+  const deviceBlocks: string[] = [];
+
+  for (const node of nodes) {
+    const resultsStr = node.results
+      ? JSON.stringify(node.results, null, 2)
+      : "(no output)";
+
+    const header = `Device: ${node.nodeDisplayName} (${node.nodeType})\nHost: ${node.host}\n--- Output ---\n`;
+    const footer = `\n---\n`;
+    const remaining = charBudget - usedChars - header.length - footer.length;
+
+    let body: string;
+    if (remaining <= 0) {
+      body = "[TRUNCATED]";
+    } else if (resultsStr.length > remaining) {
+      body = resultsStr.slice(0, remaining) + "\n[TRUNCATED]";
+    } else {
+      body = resultsStr;
+    }
+
+    deviceBlocks.push(header + body + footer);
+    usedChars += header.length + body.length + footer.length;
+  }
+
+  const schemaExample = `{
+  "nodes": [
+    { "id": "unique-id", "type": "router|switch|ap|host|vlan|unknown", "label": "Display Name", "data": { "ip": "...", "model": "..." } }
+  ],
+  "edges": [
+    { "id": "e-source-target", "source": "node-id", "target": "other-node-id", "label": "interface or link", "data": {} }
+  ]
+}`;
+
+  const vlanRule = skipVlans
+    ? `- Do NOT include VLAN nodes. Only include physical devices (switches, routers, APs, hosts, servers).`
+    : `- Include VLANs as separate nodes with type "vlan".`;
+
+  const userMessage =
+    `Analyze the following network device data and return a JSON topology graph.\n\n` +
+    `Required JSON structure:\n${schemaExample}\n\n` +
+    `Rules:\n` +
+    `- Node IDs must be unique strings (use hostname or device name).\n` +
+    `- Edge IDs must be unique; use format "e-<source>-<target>".\n` +
+    `- Include ALL physical connections (port-channels, uplinks, trunk links) as edges.\n` +
+    `- Include relevant metadata in "data" fields (IP, model, interfaces, VLANs carried).\n` +
+    vlanRule + `\n\n` +
+    `Device data:\n\n` +
+    deviceBlocks.join("\n") +
+    `\nReturn ONLY the JSON object. Do not write any explanation. Start your response with { and end with }.`;
+
+  return { systemPrompt, userMessage };
+}

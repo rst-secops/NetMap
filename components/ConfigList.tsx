@@ -103,7 +103,14 @@ export default function ConfigList({ configs }: { configs: ConfigSummary[] }) {
           <tbody>
             {configs.map((config) => (
               <tr key={config.id} className="border-b border-gray-800">
-                <td className="py-3 font-medium">{config.name}</td>
+                <td className="py-3 font-medium">
+                  <Link
+                    href={`/analysis/configs/${config.id}`}
+                    className="hover:text-blue-400 transition-colors"
+                  >
+                    {config.name}
+                  </Link>
+                </td>
                 <td className="py-3 text-gray-400">
                   {MODEL_LABELS[config.model] ?? config.model}
                 </td>

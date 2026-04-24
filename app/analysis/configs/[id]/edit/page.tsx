@@ -31,6 +31,7 @@ export default async function EditConfigPage({
       : "",
     hasApiKey: config.apiKey.length > 0,
     isDefault: config.isDefault,
+    skipVlans: config.skipVlans,
   };
 
   return (

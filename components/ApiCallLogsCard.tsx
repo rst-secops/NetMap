@@ -66,7 +66,7 @@ export default function ApiCallLogsCard({ logs }: { logs: ApiCallLog[] }) {
     <div className="rounded-lg border border-gray-800 bg-gray-900">
       <div className="px-6 py-4 border-b border-gray-800">
         <h2 className="text-lg font-semibold">API Call Log</h2>
-        <p className="mt-0.5 text-sm text-gray-400">Recent Claude API requests and responses.</p>
+        <p className="mt-0.5 text-sm text-gray-400">Recent LLM API requests and responses.</p>
       </div>
       {logs.length === 0 ? (
         <p className="px-6 py-4 text-sm text-gray-500">No API calls recorded yet.</p>

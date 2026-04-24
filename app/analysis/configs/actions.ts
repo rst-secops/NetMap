@@ -27,6 +27,7 @@ export async function createConfigAction(
     baseUrl: (formData.get("baseUrl") as string)?.trim() ?? "",
     apiKey: formData.get("apiKey") as string,
     isDefault: formData.get("isDefault") === "on",
+    skipVlans: formData.get("skipVlans") === "on",
   };
 
   const result = analysisConfigSchema.safeParse(raw);
@@ -39,7 +40,7 @@ export async function createConfigAction(
     return { fieldErrors };
   }
 
-  if (!result.data.apiKey) {
+  if (!result.data.apiKey && result.data.provider !== "ollama") {
     return { fieldErrors: { apiKey: "API key is required" } };
   }
 
@@ -47,6 +48,7 @@ export async function createConfigAction(
     createConfig({
       ...result.data,
       baseUrl: result.data.baseUrl ?? "",
+      skipVlans: result.data.skipVlans ?? false,
     });
   } catch (err: unknown) {
     if (err instanceof Error && err.message.includes("UNIQUE")) {
@@ -73,6 +75,7 @@ export async function updateConfigAction(
     baseUrl: (formData.get("baseUrl") as string)?.trim() ?? "",
     apiKey: apiKeyChanged ? (formData.get("apiKey") as string) : "placeholder",
     isDefault: formData.get("isDefault") === "on",
+    skipVlans: formData.get("skipVlans") === "on",
   };
 
   const result = analysisConfigSchema.safeParse(raw);
@@ -92,6 +95,7 @@ export async function updateConfigAction(
     maxTokens: result.data.maxTokens,
     baseUrl: result.data.baseUrl ?? "",
     isDefault: result.data.isDefault,
+    skipVlans: result.data.skipVlans ?? false,
   };
   if (apiKeyChanged) {
     updateData.apiKey = result.data.apiKey;
@@ -126,5 +130,23 @@ export async function setDefaultConfigAction(id: string): Promise<{ error?: stri
     return {};
   } catch {
     return { error: "Failed to update default config." };
+  }
+}
+
+export async function fetchOllamaModelsAction(
+  baseUrl: string
+): Promise<{ models?: string[]; error?: string }> {
+  if (!baseUrl) return { error: "Server URL is required" };
+  try {
+    const response = await fetch(`${baseUrl}/api/tags`, {
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!response.ok) return { error: `Server responded with ${response.status}` };
+    const data = await response.json() as { models?: { name: string }[] };
+    const models = (data.models ?? []).map((m) => m.name);
+    if (models.length === 0) return { error: "No models installed on this Ollama server" };
+    return { models };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Failed to reach Ollama server" };
   }
 }
