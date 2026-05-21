@@ -9,7 +9,16 @@ export const dynamic = "force-dynamic";
 const PROVIDER_LABELS: Record<string, string> = {
   claude: "Claude (Anthropic)",
   google: "Google AI Studio",
-  ollama: "Ollama (Local)",
+  local: "Local Model",
+};
+
+const LOCAL_BACKEND_LABELS: Record<string, string> = {
+  ollama: "Ollama",
+  vllm: "vLLM",
+  lmstudio: "LM Studio",
+  tensorrt: "TensorRT-LLM",
+  janai: "Jan.ai",
+  nim: "NVIDIA NIM",
 };
 
 export default async function ConfigDetailPage({
@@ -59,6 +68,16 @@ export default async function ConfigDetailPage({
                 </span>
               </dd>
             </div>
+            {config.provider === "local" && (
+              <div>
+                <dt className="text-xs font-medium text-gray-500">Backend</dt>
+                <dd className="mt-0.5">
+                  <span className="rounded-full bg-gray-700 px-2 py-0.5 text-xs">
+                    {LOCAL_BACKEND_LABELS[config.localBackend] ?? config.localBackend}
+                  </span>
+                </dd>
+              </div>
+            )}
             <div>
               <dt className="text-xs font-medium text-gray-500">Default</dt>
               <dd className="mt-0.5 text-sm">
@@ -93,7 +112,7 @@ export default async function ConfigDetailPage({
                 )}
               </dd>
             </div>
-            {config.provider === "ollama" && (
+            {config.provider === "local" && (
               <div>
                 <dt className="text-xs font-medium text-gray-500">Skip VLANs</dt>
                 <dd className="mt-0.5 text-sm">

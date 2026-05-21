@@ -8,6 +8,7 @@ import {
   updateConfig,
   deleteConfig,
   setDefaultConfig,
+  getConfigById,
 } from "../../../lib/analysis-configs";
 
 export interface ConfigFormState {
@@ -69,6 +70,14 @@ export async function updateConfigAction(
   const id = formData.get("id") as string;
   const apiKeyChanged = formData.get("apiKeyChanged") === "true";
 
+  // When the user did not change the API key, substitute the stored value so
+  // validation reflects what would actually be persisted — prevents a config
+  // from being saved with an empty key for providers that require one.
+  const existing = !apiKeyChanged ? getConfigById(id) : undefined;
+  const effectiveApiKey = apiKeyChanged
+    ? (formData.get("apiKey") as string)
+    : (existing?.apiKey ?? "");
+
   const raw = {
     name: formData.get("name") as string,
     provider: formData.get("provider") as string,
@@ -76,7 +85,7 @@ export async function updateConfigAction(
     model: formData.get("model") as string,
     maxTokens: formData.get("maxTokens") as string,
     baseUrl: (formData.get("baseUrl") as string)?.trim() ?? "",
-    apiKey: apiKeyChanged ? (formData.get("apiKey") as string) : "placeholder",
+    apiKey: effectiveApiKey,
     isDefault: formData.get("isDefault") === "on",
     skipVlans: formData.get("skipVlans") === "on",
   };
@@ -89,6 +98,10 @@ export async function updateConfigAction(
       if (!fieldErrors[key]) fieldErrors[key] = issue.message;
     }
     return { fieldErrors };
+  }
+
+  if (!result.data.apiKey && result.data.provider !== "local") {
+    return { fieldErrors: { apiKey: "API key is required" } };
   }
 
   const updateData: Parameters<typeof updateConfig>[1] = {
@@ -137,17 +150,32 @@ export async function setDefaultConfigAction(id: string): Promise<{ error?: stri
   }
 }
 
+// Well-known cloud instance-metadata endpoints. Even though the app has no
+// auth and is intended for internal use, blocking these closes the most
+// dangerous concrete SSRF target (credential exfiltration on cloud-hosted runs).
+const METADATA_HOSTS = new Set([
+  "169.254.169.254",      // AWS, GCP, Azure, DigitalOcean, Hetzner
+  "169.254.170.2",        // AWS ECS task metadata
+  "metadata.google.internal",
+  "metadata.goog",
+  "metadata.azure.com",
+]);
+
 export async function fetchLocalModelsAction(
   baseUrl: string,
   localBackend: string
 ): Promise<{ models?: string[]; error?: string }> {
   if (!baseUrl) return { error: "Server URL is required" };
+  let parsedUrl: URL;
   try {
-    const { protocol } = new URL(baseUrl);
-    if (protocol !== "http:" && protocol !== "https:")
+    parsedUrl = new URL(baseUrl);
+    if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:")
       return { error: "Server URL must use http:// or https://" };
   } catch {
     return { error: "Invalid server URL" };
+  }
+  if (METADATA_HOSTS.has(parsedUrl.hostname.toLowerCase())) {
+    return { error: "This host is not allowed" };
   }
   try {
     if (localBackend === "ollama") {

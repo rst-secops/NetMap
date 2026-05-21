@@ -26,7 +26,7 @@ interface NodeFormProps {
     port: number;
     commands: string[];
     nodeUser: string;
-    nodePasswd: string;
+    hasPassword: boolean;
     isEnabled: boolean;
   };
 }
@@ -35,6 +35,9 @@ export default function NodeForm({ action, defaultValues }: NodeFormProps) {
   const isEdit = !!defaultValues?.id;
 
   const [state, formAction, isPending] = useActionState(action, {});
+  // For edit: start in masked mode if the node already has a password.
+  // For new: always in input mode.
+  const [editingPassword, setEditingPassword] = useState(!defaultValues?.hasPassword);
 
   // Use a ref-based counter for IDs to avoid hydration mismatches from random values.
   // The counter starts at 0 on both server and client, producing deterministic initial IDs.
@@ -69,6 +72,9 @@ export default function NodeForm({ action, defaultValues }: NodeFormProps) {
     <form action={formAction} className="space-y-6">
       {defaultValues?.id && (
         <input type="hidden" name="id" value={defaultValues.id} />
+      )}
+      {isEdit && (
+        <input type="hidden" name="passwordChanged" value={editingPassword ? "true" : "false"} />
       )}
 
       {state.error && (
@@ -204,17 +210,31 @@ export default function NodeForm({ action, defaultValues }: NodeFormProps) {
             <label htmlFor="nodePasswd" className="block text-sm font-medium text-gray-300">
               Password
             </label>
-            <input
-              id="nodePasswd"
-              name="nodePasswd"
-              type="password"
-              required
-              defaultValue={defaultValues?.nodePasswd ?? ""}
-              autoComplete="off"
-              aria-describedby={state.fieldErrors?.nodePasswd ? "nodePasswd-error" : undefined}
-              aria-invalid={!!state.fieldErrors?.nodePasswd}
-              className="mt-1 block w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 placeholder:text-gray-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-            />
+            {isEdit && !editingPassword ? (
+              <div className="mt-1 flex items-center gap-2">
+                <span className="block flex-1 rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-500">
+                  ••••••••
+                </span>
+                <button
+                  type="button"
+                  className="text-sm text-blue-400 hover:text-blue-300"
+                  onClick={() => setEditingPassword(true)}
+                >
+                  Change
+                </button>
+              </div>
+            ) : (
+              <input
+                id="nodePasswd"
+                name="nodePasswd"
+                type="password"
+                required={!isEdit || editingPassword}
+                autoComplete="new-password"
+                aria-describedby={state.fieldErrors?.nodePasswd ? "nodePasswd-error" : undefined}
+                aria-invalid={!!state.fieldErrors?.nodePasswd}
+                className="mt-1 block w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 placeholder:text-gray-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              />
+            )}
             {state.fieldErrors?.nodePasswd && (
               <p id="nodePasswd-error" className="mt-1 text-xs text-red-400">
                 {state.fieldErrors.nodePasswd}

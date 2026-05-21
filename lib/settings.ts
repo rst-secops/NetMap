@@ -1,4 +1,4 @@
-import { get, run } from "./db";
+import { get, run, getDb } from "./db";
 
 interface SettingRow {
   key: string;
@@ -18,6 +18,18 @@ export function setSetting(key: string, value: string): void {
     value,
     value
   );
+}
+
+/**
+ * Atomically transitions a setting from `expected` to `next`.
+ * Returns true if the value was actually changed (i.e. it matched `expected`),
+ * false otherwise. Use this for compare-and-swap on flags like `analysis_running`.
+ */
+export function compareAndSetSetting(key: string, expected: string, next: string): boolean {
+  const result = getDb().query(
+    "UPDATE settings SET value = ?, updated_at = datetime('now') WHERE key = ? AND value = ?"
+  ).run(next, key, expected);
+  return result.changes > 0;
 }
 
 export interface Schedule {

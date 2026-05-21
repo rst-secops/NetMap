@@ -9,6 +9,16 @@ export interface CollectionResult {
   collectedAt: string;
 }
 
+// Pagination-disable commands sent before the user's commands. Each device
+// accepts the relevant subset and ignores the rest — most Cisco-like CLIs
+// accept "terminal length 0", Juniper uses "set cli screen-length 0",
+// HP/Aruba uses "no page". Output from these is discarded (parseShellOutput
+// only extracts user-supplied commands).
+const SETUP_COMMANDS = [
+  "terminal length 0",
+  "terminal width 0",
+];
+
 /**
  * Open an interactive shell and run all commands sequentially.
  * Network devices typically only support a single channel/shell,
@@ -41,16 +51,17 @@ function execCommandsViaShell(
 
         stream.on("close", () => {
           clearTimeout(timer);
+          // Parse only the user's commands; setup-command output is ignored.
           const results = parseShellOutput(fullOutput, commands);
           resolve(results);
         });
 
-        // Send commands with a small delay between them to let the
-        // device process each one, then exit
+        // Send setup commands first to disable pagination, then user commands.
+        const allCommands = [...SETUP_COMMANDS, ...commands];
         let i = 0;
         const sendNext = () => {
-          if (i < commands.length) {
-            stream.write(commands[i] + "\n");
+          if (i < allCommands.length) {
+            stream.write(allCommands[i] + "\n");
             i++;
             setTimeout(sendNext, 500);
           } else {

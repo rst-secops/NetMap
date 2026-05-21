@@ -25,27 +25,40 @@ export default function RunAnalysisCard({
     runAnalysisAction,
     {}
   );
-  const [backgroundRunning, setBackgroundRunning] = useState(false);
+  // Single source of truth for "an analysis is running on the server".
+  // Set by the initial mount probe and by the action-result promotion effect;
+  // cleared by the poll loop when the server reports completion.
+  const [polledRunning, setPolledRunning] = useState(false);
   const [backgroundError, setBackgroundError] = useState<string | null>(null);
 
+  // Initial mount: detect a run that started in a previous session/tab.
   useEffect(() => {
+    let alive = true;
     getAnalysisStatusAction().then((status) => {
-      if (status.running) setBackgroundRunning(true);
+      if (alive && status.running) setPolledRunning(true);
     });
+    return () => { alive = false; };
   }, []);
 
+  // Promote the action's "started" signal (sticky in useActionState) into
+  // polledRunning so the poll loop owns the lifecycle from here on.
+  useEffect(() => {
+    if (state.started) setPolledRunning(true);
+  }, [state.started]);
+
+  // Redirect to the map viewer when a synchronous (cloud) run succeeds.
   useEffect(() => {
     if (state.success) router.push("/");
-    if (state.started) setBackgroundRunning(true);
-  }, [state.success, state.started, router]);
+  }, [state.success, router]);
 
+  // Poll while a background run is in flight.
   useEffect(() => {
-    if (!backgroundRunning) return;
+    if (!polledRunning) return;
     const id = setInterval(async () => {
       const status = await getAnalysisStatusAction();
       if (!status.running) {
         clearInterval(id);
-        setBackgroundRunning(false);
+        setPolledRunning(false);
         if (status.error) {
           setBackgroundError(status.error);
         } else {
@@ -54,9 +67,9 @@ export default function RunAnalysisCard({
       }
     }, 3000);
     return () => clearInterval(id);
-  }, [backgroundRunning, router]);
+  }, [polledRunning, router]);
 
-  const isAnalyzing = isPending || backgroundRunning;
+  const isAnalyzing = isPending || polledRunning;
 
   return (
     <div className="rounded-lg border border-gray-800 bg-gray-900 p-6">
@@ -96,7 +109,7 @@ export default function RunAnalysisCard({
         </form>
       )}
 
-      {backgroundRunning && (
+      {polledRunning && (
         <p className="mt-3 text-sm text-blue-400">
           Analysis running in background — this may take several minutes for local models.
         </p>

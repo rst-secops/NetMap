@@ -5,7 +5,7 @@ import { networkGraphSchema } from "../../lib/schemas";
 import { getAllNodes } from "../../lib/dc-nodes";
 import { buildPrompt, buildOllamaPrompt } from "../../lib/prompt-builder";
 import { saveAnalysisResult } from "../../lib/analysis-results";
-import { setSetting, getSetting } from "../../lib/settings";
+import { setSetting, getSetting, compareAndSetSetting } from "../../lib/settings";
 import { saveApiCallLog } from "../../lib/api-call-logs";
 import { getConfigById, getDefaultConfig } from "../../lib/analysis-configs";
 
@@ -16,6 +16,14 @@ export interface RunAnalysisState {
   nodeCount?: number;
   edgeCount?: number;
 }
+
+const METADATA_HOSTS = new Set([
+  "169.254.169.254",
+  "169.254.170.2",
+  "metadata.google.internal",
+  "metadata.goog",
+  "metadata.azure.com",
+]);
 
 export async function getAnalysisStatusAction(): Promise<{ running: boolean; error?: string }> {
   return {
@@ -90,9 +98,11 @@ async function performAnalysis(
   }
 
   try {
-    const { protocol } = new URL(fetchUrl);
-    if (protocol !== "http:" && protocol !== "https:")
+    const parsed = new URL(fetchUrl);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:")
       return { error: "API base URL must use http:// or https://" };
+    if (METADATA_HOSTS.has(parsed.hostname.toLowerCase()))
+      return { error: "API base URL host is not allowed" };
   } catch {
     return { error: "Invalid API URL" };
   }
@@ -171,10 +181,6 @@ export async function runAnalysisAction(
   _prev: RunAnalysisState,
   formData: FormData
 ): Promise<RunAnalysisState> {
-  if (getSetting("analysis_running") === "1") {
-    return { error: "Analysis already running. Please wait." };
-  }
-
   const allNodes = getAllNodes();
   const nodesWithResults = allNodes.filter((n) => n.results !== null);
   if (nodesWithResults.length === 0) {
@@ -194,7 +200,10 @@ export async function runAnalysisAction(
     ? buildOllamaPrompt(nodesWithResults, config.skipVlans ?? false)
     : buildPrompt(nodesWithResults, config.skipVlans ?? false);
 
-  setSetting("analysis_running", "1");
+  // Atomically acquire the running lock — prevents concurrent runs
+  if (!compareAndSetSetting("analysis_running", "0", "1")) {
+    return { error: "Analysis already running. Please wait." };
+  }
 
   if (config.provider === "local") {
     void (async () => {

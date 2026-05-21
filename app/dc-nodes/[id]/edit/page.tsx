@@ -46,7 +46,7 @@ export default async function EditDcNodePage({
           port: node.port,
           commands: node.commands,
           nodeUser: node.nodeUser,
-          nodePasswd: node.nodePasswd,
+          hasPassword: node.nodePasswd.length > 0,
           isEnabled: node.isEnabled,
         }}
       />

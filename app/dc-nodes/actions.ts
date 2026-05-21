@@ -145,6 +145,16 @@ export async function updateNodeAction(
   formData: FormData
 ): Promise<NodeFormState> {
   const id = formData.get("id") as string;
+  const passwordChanged = formData.get("passwordChanged") === "true";
+
+  // When the user did not change the password, substitute the stored value so
+  // validation passes (the field is required by the schema) — and so the
+  // existing password is NOT sent back to the browser in HTML.
+  let effectivePassword = formData.get("nodePasswd") as string;
+  if (!passwordChanged) {
+    const existing = getNodeById(id);
+    effectivePassword = existing?.nodePasswd ?? "";
+  }
 
   const raw = {
     nodeType: formData.get("nodeType") as string,
@@ -155,7 +165,7 @@ export async function updateNodeAction(
       (c) => c.trim() !== ""
     ),
     nodeUser: (formData.get("nodeUser") as string).trim(),
-    nodePasswd: formData.get("nodePasswd") as string,
+    nodePasswd: effectivePassword,
     isEnabled: formData.get("isEnabled") === "on",
   };
 

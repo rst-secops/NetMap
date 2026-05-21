@@ -185,6 +185,8 @@ export function deleteConfig(id: string): void {
 
 export function setDefaultConfig(id: string): void {
   const doSet = getDb().transaction(() => {
+    const target = get<AnalysisConfigRow>("SELECT id FROM analysis_configs WHERE id = ?", id);
+    if (!target) throw new Error("Config not found");
     run("UPDATE analysis_configs SET is_default = 0");
     run("UPDATE analysis_configs SET is_default = 1 WHERE id = ?", id);
   });
