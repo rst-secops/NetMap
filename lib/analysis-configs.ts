@@ -5,6 +5,7 @@ interface AnalysisConfigRow {
   id: string;
   name: string;
   provider: string;
+  local_backend: string;
   model: string;
   max_tokens: number;
   base_url: string;
@@ -19,6 +20,7 @@ export interface AnalysisConfig {
   id: string;
   name: string;
   provider: string;
+  localBackend: string;
   model: string;
   maxTokens: number;
   baseUrl: string;
@@ -34,6 +36,7 @@ function toConfig(row: AnalysisConfigRow): AnalysisConfig {
     id: row.id,
     name: row.name,
     provider: row.provider,
+    localBackend: row.local_backend,
     model: row.model,
     maxTokens: row.max_tokens,
     baseUrl: row.base_url,
@@ -65,6 +68,7 @@ export function getDefaultConfig(): AnalysisConfig | undefined {
 interface ConfigData {
   name: string;
   provider: string;
+  localBackend: string;
   model: string;
   maxTokens: number;
   baseUrl: string;
@@ -81,11 +85,12 @@ export function createConfig(data: ConfigData): AnalysisConfig {
       run("UPDATE analysis_configs SET is_default = 0");
     }
     run(
-      `INSERT INTO analysis_configs (id, name, provider, model, max_tokens, base_url, api_key, is_default, skip_vlans)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO analysis_configs (id, name, provider, local_backend, model, max_tokens, base_url, api_key, is_default, skip_vlans)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       id,
       data.name,
       data.provider,
+      data.localBackend,
       data.model,
       data.maxTokens,
       data.baseUrl,
@@ -102,6 +107,7 @@ export function createConfig(data: ConfigData): AnalysisConfig {
 interface UpdateConfigData {
   name?: string;
   provider?: string;
+  localBackend?: string;
   model?: string;
   maxTokens?: number;
   baseUrl?: string;
@@ -137,6 +143,7 @@ export function updateConfig(id: string, data: UpdateConfigData): AnalysisConfig
 
     if (data.name !== undefined) { fields.push("name = ?"); params.push(data.name); }
     if (data.provider !== undefined) { fields.push("provider = ?"); params.push(data.provider); }
+    if (data.localBackend !== undefined) { fields.push("local_backend = ?"); params.push(data.localBackend); }
     if (data.model !== undefined) { fields.push("model = ?"); params.push(data.model); }
     if (data.maxTokens !== undefined) { fields.push("max_tokens = ?"); params.push(data.maxTokens); }
     if (data.baseUrl !== undefined) { fields.push("base_url = ?"); params.push(data.baseUrl); }

@@ -9,6 +9,7 @@ interface ConfigSummary {
   id: string;
   name: string;
   provider: string;
+  localBackend: string;
   model: string;
   maxTokens: number;
   isDefault: boolean;
@@ -44,6 +45,15 @@ const MODEL_LABELS: Record<string, string> = {
   "claude-sonnet-4-20250514": "Sonnet 4",
   "claude-haiku-4-5-20251001": "Haiku 4.5",
   "claude-opus-4-20250514": "Opus 4",
+};
+
+const LOCAL_BACKEND_LABELS: Record<string, string> = {
+  ollama: "Ollama",
+  vllm: "vLLM",
+  lmstudio: "LM Studio",
+  tensorrt: "TensorRT-LLM",
+  janai: "Jan.ai",
+  nim: "NVIDIA NIM",
 };
 
 function DefaultToggle({ id, isDefault }: { id: string; isDefault: boolean }) {
@@ -112,7 +122,9 @@ export default function ConfigList({ configs }: { configs: ConfigSummary[] }) {
                   </Link>
                 </td>
                 <td className="py-3 text-gray-400">
-                  {MODEL_LABELS[config.model] ?? config.model}
+                  {config.provider === "local"
+                    ? `${LOCAL_BACKEND_LABELS[config.localBackend] ?? config.localBackend} · ${config.model}`
+                    : (MODEL_LABELS[config.model] ?? config.model)}
                 </td>
                 <td className="py-3 text-gray-400">{config.maxTokens}</td>
                 <td className="py-3">

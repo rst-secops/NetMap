@@ -3,13 +3,31 @@
 import Link from "next/link";
 import { useActionState, useState } from "react";
 import type { ConfigFormState } from "../app/analysis/configs/actions";
-import { fetchOllamaModelsAction } from "../app/analysis/configs/actions";
+import { fetchLocalModelsAction } from "../app/analysis/configs/actions";
 
 const PROVIDERS = [
   { value: "claude", label: "Claude (Anthropic)" },
   { value: "google", label: "Google AI Studio" },
-  { value: "ollama", label: "Ollama (Local)" },
+  { value: "local", label: "Local Model" },
 ];
+
+const LOCAL_BACKENDS = [
+  { value: "ollama", label: "Ollama" },
+  { value: "vllm", label: "vLLM" },
+  { value: "lmstudio", label: "LM Studio" },
+  { value: "tensorrt", label: "TensorRT-LLM" },
+  { value: "janai", label: "Jan.ai" },
+  { value: "nim", label: "NVIDIA NIM" },
+];
+
+const LOCAL_BACKEND_PLACEHOLDERS: Record<string, string> = {
+  ollama: "http://localhost:11434",
+  vllm: "http://localhost:8000",
+  lmstudio: "http://localhost:1234",
+  tensorrt: "http://localhost:8000",
+  janai: "http://localhost:1337",
+  nim: "http://localhost:8000",
+};
 
 const MODELS_BY_PROVIDER: Record<string, { value: string; label: string }[]> = {
   claude: [
@@ -28,6 +46,7 @@ interface DefaultValues {
   id: string;
   name: string;
   provider: string;
+  localBackend: string;
   model: string;
   maxTokens: number;
   baseUrl: string;
@@ -46,37 +65,49 @@ export default function ConfigForm({ action, defaultValues }: ConfigFormProps) {
   const [state, formAction, isPending] = useActionState<ConfigFormState, FormData>(action, {});
   const [editingKey, setEditingKey] = useState(!defaultValues?.hasApiKey);
   const [provider, setProvider] = useState(defaultValues?.provider ?? "claude");
+  const [localBackend, setLocalBackend] = useState(defaultValues?.localBackend || "ollama");
   const isEdit = !!defaultValues;
 
-  // Cloud provider model selection
   const models = MODELS_BY_PROVIDER[provider] ?? MODELS_BY_PROVIDER.claude;
   const defaultModel = defaultValues?.provider === provider ? defaultValues.model : models[0]?.value;
 
-  // Ollama-specific state
   const [baseUrlValue, setBaseUrlValue] = useState(defaultValues?.baseUrl ?? "");
-  const [ollamaModels, setOllamaModels] = useState<string[]>(
-    defaultValues?.provider === "ollama" && defaultValues.model ? [defaultValues.model] : []
+  const [localModels, setLocalModels] = useState<string[]>(
+    defaultValues?.provider === "local" && defaultValues.model ? [defaultValues.model] : []
   );
-  const [selectedOllamaModel, setSelectedOllamaModel] = useState(
-    defaultValues?.provider === "ollama" ? (defaultValues.model ?? "") : ""
+  const [selectedLocalModel, setSelectedLocalModel] = useState(
+    defaultValues?.provider === "local" ? (defaultValues.model ?? "") : ""
   );
+  const [manualModel, setManualModel] = useState("");
+  const [useManualModel, setUseManualModel] = useState(false);
   const [fetchingModels, setFetchingModels] = useState(false);
   const [modelFetchError, setModelFetchError] = useState<string | null>(null);
 
   function handleProviderChange(newProvider: string) {
     setProvider(newProvider);
-    if (newProvider !== "ollama") {
-      setOllamaModels([]);
-      setSelectedOllamaModel("");
+    if (newProvider !== "local") {
+      setLocalModels([]);
+      setSelectedLocalModel("");
+      setManualModel("");
+      setUseManualModel(false);
       setModelFetchError(null);
     }
   }
 
+  function handleBackendChange(newBackend: string) {
+    setLocalBackend(newBackend);
+    setLocalModels([]);
+    setSelectedLocalModel("");
+    setManualModel("");
+    setUseManualModel(false);
+    setModelFetchError(null);
+  }
+
   function handleBaseUrlChange(value: string) {
     setBaseUrlValue(value);
-    if (ollamaModels.length > 0) {
-      setOllamaModels([]);
-      setSelectedOllamaModel("");
+    if (localModels.length > 0) {
+      setLocalModels([]);
+      setSelectedLocalModel("");
       setModelFetchError(null);
     }
   }
@@ -88,15 +119,16 @@ export default function ConfigForm({ action, defaultValues }: ConfigFormProps) {
     }
     setFetchingModels(true);
     setModelFetchError(null);
-    const result = await fetchOllamaModelsAction(baseUrlValue);
+    const result = await fetchLocalModelsAction(baseUrlValue, localBackend);
     setFetchingModels(false);
     if (result.error) {
       setModelFetchError(result.error);
     } else if (result.models) {
-      setOllamaModels(result.models);
-      setSelectedOllamaModel((prev) =>
+      setLocalModels(result.models);
+      setSelectedLocalModel((prev) =>
         result.models!.includes(prev) ? prev : (result.models![0] ?? "")
       );
+      setUseManualModel(false);
     }
   }
 
@@ -148,11 +180,34 @@ export default function ConfigForm({ action, defaultValues }: ConfigFormProps) {
         )}
       </div>
 
-      {/* Ollama Server URL (shown above model for Ollama only) */}
-      {provider === "ollama" && (
+      {/* Local Backend selector */}
+      {provider === "local" && (
+        <div>
+          <label htmlFor="localBackend" className="block text-sm font-medium text-gray-300">
+            Backend
+          </label>
+          <select
+            id="localBackend"
+            name="localBackend"
+            value={localBackend}
+            onChange={(e) => handleBackendChange(e.target.value)}
+            className="mt-1 rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm"
+          >
+            {LOCAL_BACKENDS.map((b) => (
+              <option key={b.value} value={b.value}>{b.label}</option>
+            ))}
+          </select>
+          {state.fieldErrors?.localBackend && (
+            <p className="mt-1 text-xs text-red-400">{state.fieldErrors.localBackend}</p>
+          )}
+        </div>
+      )}
+
+      {/* Server URL (local only) */}
+      {provider === "local" && (
         <div>
           <label htmlFor="baseUrl" className="block text-sm font-medium text-gray-300">
-            Ollama Server URL
+            Server URL
           </label>
           <input
             id="baseUrl"
@@ -160,7 +215,7 @@ export default function ConfigForm({ action, defaultValues }: ConfigFormProps) {
             type="text"
             value={baseUrlValue}
             onChange={(e) => handleBaseUrlChange(e.target.value)}
-            placeholder="http://192.168.1.100:11434"
+            placeholder={LOCAL_BACKEND_PLACEHOLDERS[localBackend] ?? "http://localhost:8080"}
             className="mt-1 w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm"
           />
           {state.fieldErrors?.baseUrl && (
@@ -173,7 +228,7 @@ export default function ConfigForm({ action, defaultValues }: ConfigFormProps) {
       <div>
         <label htmlFor="apiKey" className="block text-sm font-medium text-gray-300">
           API Key
-          {provider === "ollama" && (
+          {provider === "local" && (
             <span className="ml-1 font-normal text-gray-500">(optional)</span>
           )}
         </label>
@@ -195,7 +250,7 @@ export default function ConfigForm({ action, defaultValues }: ConfigFormProps) {
             id="apiKey"
             name="apiKey"
             type="password"
-            placeholder={provider === "ollama" ? "Bearer token (if required)" : "sk-ant-..."}
+            placeholder={provider === "local" ? "Bearer token (if required)" : "sk-ant-..."}
             className="mt-1 w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm"
             onChange={() => { if (!editingKey) setEditingKey(true); }}
           />
@@ -210,34 +265,64 @@ export default function ConfigForm({ action, defaultValues }: ConfigFormProps) {
         <label htmlFor="model" className="block text-sm font-medium text-gray-300">
           Model
         </label>
-        {provider === "ollama" ? (
+        {provider === "local" ? (
           <div className="mt-1 space-y-2">
-            <div className="flex gap-2">
-              <select
-                id="model"
-                name="model"
-                value={selectedOllamaModel}
-                onChange={(e) => setSelectedOllamaModel(e.target.value)}
-                disabled={ollamaModels.length === 0}
-                className="rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm disabled:opacity-50"
-              >
-                {ollamaModels.length === 0 ? (
-                  <option value="">— fetch models first —</option>
-                ) : (
-                  ollamaModels.map((m) => (
-                    <option key={m} value={m}>{m}</option>
-                  ))
-                )}
-              </select>
-              <button
-                type="button"
-                onClick={handleFetchModels}
-                disabled={fetchingModels}
-                className="rounded-lg border border-gray-600 px-3 py-2 text-sm hover:bg-gray-800 disabled:opacity-50"
-              >
-                {fetchingModels ? "Fetching…" : "Fetch Models"}
-              </button>
-            </div>
+            {!useManualModel ? (
+              <>
+                <div className="flex gap-2">
+                  <select
+                    id="model"
+                    name="model"
+                    value={selectedLocalModel}
+                    onChange={(e) => setSelectedLocalModel(e.target.value)}
+                    disabled={localModels.length === 0}
+                    className="rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm disabled:opacity-50"
+                  >
+                    {localModels.length === 0 ? (
+                      <option value="">— fetch models first —</option>
+                    ) : (
+                      localModels.map((m) => (
+                        <option key={m} value={m}>{m}</option>
+                      ))
+                    )}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={handleFetchModels}
+                    disabled={fetchingModels}
+                    className="rounded-lg border border-gray-600 px-3 py-2 text-sm hover:bg-gray-800 disabled:opacity-50"
+                  >
+                    {fetchingModels ? "Fetching…" : "Fetch Models"}
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => { setUseManualModel(true); setManualModel(selectedLocalModel); }}
+                  className="text-xs text-gray-500 hover:text-gray-300"
+                >
+                  Enter manually
+                </button>
+              </>
+            ) : (
+              <>
+                <input
+                  id="model"
+                  name="model"
+                  type="text"
+                  value={manualModel}
+                  onChange={(e) => setManualModel(e.target.value)}
+                  placeholder="e.g. llama3.2, Qwen/Qwen2.5-7B"
+                  className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm"
+                />
+                <button
+                  type="button"
+                  onClick={() => { setUseManualModel(false); }}
+                  className="text-xs text-gray-500 hover:text-gray-300"
+                >
+                  Fetch from server instead
+                </button>
+              </>
+            )}
             {modelFetchError && (
               <p className="text-xs text-red-400">{modelFetchError}</p>
             )}
@@ -279,8 +364,8 @@ export default function ConfigForm({ action, defaultValues }: ConfigFormProps) {
         )}
       </div>
 
-      {/* Base URL for cloud providers */}
-      {provider !== "ollama" && (
+      {/* API Base URL for cloud providers */}
+      {provider !== "local" && (
         <div>
           <label htmlFor="baseUrl" className="block text-sm font-medium text-gray-300">
             API Base URL
@@ -300,8 +385,8 @@ export default function ConfigForm({ action, defaultValues }: ConfigFormProps) {
         </div>
       )}
 
-      {/* Skip VLANs — Ollama only */}
-      {provider === "ollama" && (
+      {/* Skip VLANs — local models only */}
+      {provider === "local" && (
         <div className="flex items-center gap-2">
           <input
             id="skipVlans"

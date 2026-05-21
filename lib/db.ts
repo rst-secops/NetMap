@@ -87,6 +87,9 @@ function initSchema(database: Database): void {
   const acCols = database.query("PRAGMA table_info(analysis_configs)").all() as { name: string }[];
   if (!acCols.some((c) => c.name === "skip_vlans"))
     database.run("ALTER TABLE analysis_configs ADD COLUMN skip_vlans INTEGER NOT NULL DEFAULT 0");
+  if (!acCols.some((c) => c.name === "local_backend"))
+    database.run("ALTER TABLE analysis_configs ADD COLUMN local_backend TEXT NOT NULL DEFAULT 'ollama'");
+  database.run("UPDATE analysis_configs SET provider = 'local' WHERE provider = 'ollama'");
 
   // Seed default schedule settings
   database.run(

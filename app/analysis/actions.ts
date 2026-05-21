@@ -45,20 +45,34 @@ async function performAnalysis(
       contents: [{ role: "user", parts: [{ text: userMessage }] }],
       generationConfig: { maxOutputTokens: config!.maxTokens },
     };
-  } else if (config!.provider === "ollama") {
-    fetchUrl = `${config!.baseUrl}/api/chat`;
-    fetchHeaders = { "content-type": "application/json" };
-    if (config!.apiKey) fetchHeaders["Authorization"] = `Bearer ${config!.apiKey}`;
-    requestPayload = {
-      model: config!.model,
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userMessage },
-      ],
-      stream: false,
-      format: "json",
-      options: { num_predict: config!.maxTokens },
-    };
+  } else if (config!.provider === "local") {
+    if (config!.localBackend === "ollama") {
+      fetchUrl = `${config!.baseUrl}/api/chat`;
+      fetchHeaders = { "content-type": "application/json" };
+      if (config!.apiKey) fetchHeaders["Authorization"] = `Bearer ${config!.apiKey}`;
+      requestPayload = {
+        model: config!.model,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userMessage },
+        ],
+        stream: false,
+        format: "json",
+        options: { num_predict: config!.maxTokens },
+      };
+    } else {
+      fetchUrl = `${config!.baseUrl}/v1/chat/completions`;
+      fetchHeaders = { "content-type": "application/json" };
+      if (config!.apiKey) fetchHeaders["Authorization"] = `Bearer ${config!.apiKey}`;
+      requestPayload = {
+        model: config!.model,
+        max_tokens: config!.maxTokens,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userMessage },
+        ],
+      };
+    }
   } else {
     const apiBase = config!.baseUrl || "https://api.anthropic.com";
     fetchUrl = `${apiBase}/v1/messages`;
@@ -88,7 +102,7 @@ async function performAnalysis(
     method: "POST",
     headers: fetchHeaders,
     body: JSON.stringify(requestPayload),
-    ...(config!.provider === "ollama" && { signal: AbortSignal.timeout(1_200_000) }),
+    ...(config!.provider === "local" && { signal: AbortSignal.timeout(1_200_000) }),
   });
   const durationMs = Date.now() - t0;
 
@@ -105,7 +119,7 @@ async function performAnalysis(
   });
 
   if (!response.ok) {
-    const providerLabel = config!.provider === "google" ? "Google AI" : config!.provider === "ollama" ? "Ollama" : "Claude";
+    const providerLabel = config!.provider === "google" ? "Google AI" : config!.provider === "local" ? "Local Model" : "Claude";
     return { error: `${providerLabel} API error ${response.status}: ${responseText}` };
   }
 
@@ -113,8 +127,10 @@ async function performAnalysis(
   const rawText: string | undefined =
     config!.provider === "google"
       ? responseBody?.candidates?.[0]?.content?.parts?.[0]?.text
-      : config!.provider === "ollama"
+      : config!.provider === "local" && config!.localBackend === "ollama"
       ? responseBody?.message?.content
+      : config!.provider === "local"
+      ? responseBody?.choices?.[0]?.message?.content
       : responseBody?.content?.[0]?.text;
   if (!rawText) {
     return { error: "Unexpected response format from LLM API." };
@@ -126,7 +142,7 @@ async function performAnalysis(
     const json = JSON.parse(stripped);
     const validation = networkGraphSchema.safeParse(json);
     if (!validation.success) {
-      const providerLabel = config!.provider === "google" ? "Google AI" : config!.provider === "ollama" ? "Ollama" : "Claude";
+      const providerLabel = config!.provider === "google" ? "Google AI" : config!.provider === "local" ? "Local Model" : "Claude";
       return {
         error:
           `${providerLabel} returned invalid graph structure: ` +
@@ -170,17 +186,17 @@ export async function runAnalysisAction(
   if (!config) {
     return { error: "No analysis config found. Please create one in Analysis Configs." };
   }
-  if (!config.apiKey && config.provider !== "ollama") {
+  if (!config.apiKey && config.provider !== "local") {
     return { error: `Analysis config "${config.name}" has no API key configured.` };
   }
 
-  const { systemPrompt, userMessage } = config.provider === "ollama"
+  const { systemPrompt, userMessage } = (config.provider === "local" && config.localBackend === "ollama")
     ? buildOllamaPrompt(nodesWithResults, config.skipVlans ?? false)
     : buildPrompt(nodesWithResults, config.skipVlans ?? false);
 
   setSetting("analysis_running", "1");
 
-  if (config.provider === "ollama") {
+  if (config.provider === "local") {
     void (async () => {
       try {
         const result = await performAnalysis(config, systemPrompt, userMessage);

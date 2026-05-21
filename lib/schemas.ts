@@ -43,7 +43,8 @@ export const networkGraphSchema = z.object({
 export const analysisConfigSchema = z
   .object({
     name: z.string().min(1, "Name is required").max(100),
-    provider: z.enum(["claude", "google", "ollama"]),
+    provider: z.enum(["claude", "google", "local"]),
+    localBackend: z.enum(["ollama", "vllm", "lmstudio", "tensorrt", "janai", "nim"]).optional(),
     model: z.string().min(1, "Model is required"),
     maxTokens: z.coerce.number().int().min(1).max(500000).default(4096),
     baseUrl: z
@@ -67,12 +68,21 @@ export const analysisConfigSchema = z
     skipVlans: z.boolean().default(false),
   })
   .superRefine((data, ctx) => {
-    if (data.provider === "ollama" && !data.baseUrl) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Server URL is required for Ollama",
-        path: ["baseUrl"],
-      });
+    if (data.provider === "local") {
+      if (!data.baseUrl) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Server URL is required for local models",
+          path: ["baseUrl"],
+        });
+      }
+      if (!data.localBackend) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Backend is required",
+          path: ["localBackend"],
+        });
+      }
     }
   });
 

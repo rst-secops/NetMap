@@ -11,10 +11,11 @@ export default function AnalysisConfigsPage() {
   const allConfigs = getAllConfigs();
 
   const configOptions = allConfigs.map(({ id, name, isDefault }) => ({ id, name, isDefault }));
-  const configs = allConfigs.map(({ id, name, provider, model, maxTokens, isDefault, apiKey }) => ({
+  const configs = allConfigs.map(({ id, name, provider, localBackend, model, maxTokens, isDefault, apiKey }) => ({
     id,
     name,
     provider,
+    localBackend,
     model,
     maxTokens,
     isDefault,

@@ -23,6 +23,7 @@ export default async function EditConfigPage({
     id: config.id,
     name: config.name,
     provider: config.provider,
+    localBackend: config.localBackend,
     model: config.model,
     maxTokens: config.maxTokens,
     baseUrl: config.baseUrl,

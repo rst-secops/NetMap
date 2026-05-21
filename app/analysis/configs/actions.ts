@@ -22,6 +22,7 @@ export async function createConfigAction(
   const raw = {
     name: formData.get("name") as string,
     provider: formData.get("provider") as string,
+    localBackend: (formData.get("localBackend") as string) || undefined,
     model: formData.get("model") as string,
     maxTokens: formData.get("maxTokens") as string,
     baseUrl: (formData.get("baseUrl") as string)?.trim() ?? "",
@@ -40,13 +41,14 @@ export async function createConfigAction(
     return { fieldErrors };
   }
 
-  if (!result.data.apiKey && result.data.provider !== "ollama") {
+  if (!result.data.apiKey && result.data.provider !== "local") {
     return { fieldErrors: { apiKey: "API key is required" } };
   }
 
   try {
     createConfig({
       ...result.data,
+      localBackend: result.data.localBackend ?? "",
       baseUrl: result.data.baseUrl ?? "",
       skipVlans: result.data.skipVlans ?? false,
     });
@@ -70,6 +72,7 @@ export async function updateConfigAction(
   const raw = {
     name: formData.get("name") as string,
     provider: formData.get("provider") as string,
+    localBackend: (formData.get("localBackend") as string) || undefined,
     model: formData.get("model") as string,
     maxTokens: formData.get("maxTokens") as string,
     baseUrl: (formData.get("baseUrl") as string)?.trim() ?? "",
@@ -91,6 +94,7 @@ export async function updateConfigAction(
   const updateData: Parameters<typeof updateConfig>[1] = {
     name: result.data.name,
     provider: result.data.provider,
+    localBackend: result.data.localBackend ?? "",
     model: result.data.model,
     maxTokens: result.data.maxTokens,
     baseUrl: result.data.baseUrl ?? "",
@@ -133,8 +137,9 @@ export async function setDefaultConfigAction(id: string): Promise<{ error?: stri
   }
 }
 
-export async function fetchOllamaModelsAction(
-  baseUrl: string
+export async function fetchLocalModelsAction(
+  baseUrl: string,
+  localBackend: string
 ): Promise<{ models?: string[]; error?: string }> {
   if (!baseUrl) return { error: "Server URL is required" };
   try {
@@ -145,15 +150,26 @@ export async function fetchOllamaModelsAction(
     return { error: "Invalid server URL" };
   }
   try {
-    const response = await fetch(`${baseUrl}/api/tags`, {
-      signal: AbortSignal.timeout(5000),
-    });
-    if (!response.ok) return { error: `Server responded with ${response.status}` };
-    const data = await response.json() as { models?: { name: string }[] };
-    const models = (data.models ?? []).map((m) => m.name);
-    if (models.length === 0) return { error: "No models installed on this Ollama server" };
-    return { models };
+    if (localBackend === "ollama") {
+      const response = await fetch(`${baseUrl}/api/tags`, {
+        signal: AbortSignal.timeout(5000),
+      });
+      if (!response.ok) return { error: `Server responded with ${response.status}` };
+      const data = await response.json() as { models?: { name: string }[] };
+      const models = (data.models ?? []).map((m) => m.name);
+      if (models.length === 0) return { error: "No models installed on this Ollama server" };
+      return { models };
+    } else {
+      const response = await fetch(`${baseUrl}/v1/models`, {
+        signal: AbortSignal.timeout(5000),
+      });
+      if (!response.ok) return { error: `Server responded with ${response.status}` };
+      const data = await response.json() as { data?: { id: string }[] };
+      const models = (data.data ?? []).map((m) => m.id);
+      if (models.length === 0) return { error: "No models available on this server" };
+      return { models };
+    }
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Failed to reach Ollama server" };
+    return { error: err instanceof Error ? err.message : "Failed to reach server" };
   }
 }
