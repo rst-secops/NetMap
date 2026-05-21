@@ -7,10 +7,22 @@ interface NodeResultsProps {
 }
 
 export default function NodeResults({ results }: NodeResultsProps) {
-  const entries = results ? Object.entries(results) : [];
+  const isError = results !== null && "_error" in results && Object.keys(results).length === 1;
+  const entries = results && !isError ? Object.entries(results) : [];
   const [expandedIndex, setExpandedIndex] = useState<number | null>(
     entries.length > 0 ? 0 : null
   );
+
+  if (isError) {
+    return (
+      <div className="rounded-lg border border-gray-800 bg-gray-900 p-6">
+        <h2 className="text-lg font-semibold">Collection Results</h2>
+        <p className="mt-2 text-sm text-red-400">
+          Collection failed: {(results as Record<string, string>)._error}
+        </p>
+      </div>
+    );
+  }
 
   if (!results || entries.length === 0) {
     return (

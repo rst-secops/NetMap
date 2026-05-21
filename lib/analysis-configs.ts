@@ -161,25 +161,19 @@ export function updateConfig(id: string, data: UpdateConfigData): AnalysisConfig
 }
 
 export function deleteConfig(id: string): void {
-  const all = query<AnalysisConfigRow>("SELECT * FROM analysis_configs ORDER BY created_at ASC");
-
-  if (all.length <= 1) return; // Refuse to delete the last config
-
-  const target = all.find((r) => r.id === id);
-  if (!target) return;
-
-  const doDelete = getDb().transaction(() => {
+  getDb().transaction(() => {
+    const all = query<AnalysisConfigRow>("SELECT * FROM analysis_configs ORDER BY created_at ASC");
+    if (all.length <= 1) return; // Refuse to delete the last config
+    const target = all.find((r) => r.id === id);
+    if (!target) return;
     run("DELETE FROM analysis_configs WHERE id = ?", id);
-    // If we deleted the default, promote the oldest remaining config
     if (target.is_default === 1) {
       const remaining = all.filter((r) => r.id !== id);
       if (remaining.length > 0) {
         run("UPDATE analysis_configs SET is_default = 1 WHERE id = ?", remaining[0].id);
       }
     }
-  });
-
-  doDelete();
+  })();
 }
 
 export function setDefaultConfig(id: string): void {

@@ -1,75 +1,13 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { setAnalysisProvider, setClaudeConfig, getClaudeConfig } from "../../lib/analysis-settings";
-import { analysisProviderSchema, claudeConfigSchema, networkGraphSchema } from "../../lib/schemas";
+import { networkGraphSchema } from "../../lib/schemas";
 import { getAllNodes } from "../../lib/dc-nodes";
 import { buildPrompt, buildOllamaPrompt } from "../../lib/prompt-builder";
 import { saveAnalysisResult } from "../../lib/analysis-results";
 import { setSetting, getSetting } from "../../lib/settings";
 import { saveApiCallLog } from "../../lib/api-call-logs";
 import { getConfigById, getDefaultConfig } from "../../lib/analysis-configs";
-
-export async function updateProviderAction(formData: FormData) {
-  const result = analysisProviderSchema.safeParse({
-    provider: formData.get("provider") as string,
-  });
-
-  if (!result.success) {
-    return { error: result.error.issues[0]?.message ?? "Invalid provider" };
-  }
-
-  setAnalysisProvider(result.data.provider);
-  revalidatePath("/analysis");
-  return { success: true };
-}
-
-export interface ClaudeConfigFormState {
-  success?: boolean;
-  error?: string;
-  fieldErrors?: Record<string, string>;
-}
-
-export async function updateClaudeConfigAction(
-  _prev: ClaudeConfigFormState,
-  formData: FormData
-): Promise<ClaudeConfigFormState> {
-  const apiKeyChanged = formData.get("apiKeyChanged") === "true";
-  const apiKey = apiKeyChanged
-    ? (formData.get("apiKey") as string)
-    : "placeholder-unchanged";
-
-  const raw = {
-    apiKey,
-    model: formData.get("model") as string,
-    maxTokens: formData.get("maxTokens") as string,
-    baseUrl: (formData.get("baseUrl") as string)?.trim() ?? "",
-  };
-
-  const result = claudeConfigSchema.safeParse(raw);
-  if (!result.success) {
-    const fieldErrors: Record<string, string> = {};
-    for (const issue of result.error.issues) {
-      const key = String(issue.path[0]);
-      if (!fieldErrors[key]) fieldErrors[key] = issue.message;
-    }
-    return { fieldErrors };
-  }
-
-  const config: Record<string, string | number> = {
-    model: result.data.model,
-    maxTokens: result.data.maxTokens,
-    baseUrl: result.data.baseUrl ?? "",
-  };
-
-  if (apiKeyChanged) {
-    config.apiKey = result.data.apiKey;
-  }
-
-  setClaudeConfig(config as Parameters<typeof setClaudeConfig>[0]);
-  revalidatePath("/analysis");
-  return { success: true };
-}
 
 export interface RunAnalysisState {
   success?: boolean;
@@ -135,6 +73,14 @@ async function performAnalysis(
       system: systemPrompt,
       messages: [{ role: "user", content: userMessage }],
     };
+  }
+
+  try {
+    const { protocol } = new URL(fetchUrl);
+    if (protocol !== "http:" && protocol !== "https:")
+      return { error: "API base URL must use http:// or https://" };
+  } catch {
+    return { error: "Invalid API URL" };
   }
 
   const t0 = Date.now();
@@ -229,8 +175,8 @@ export async function runAnalysisAction(
   }
 
   const { systemPrompt, userMessage } = config.provider === "ollama"
-    ? buildOllamaPrompt(nodesWithResults, config.maxTokens, config.skipVlans ?? false)
-    : buildPrompt(nodesWithResults, config.maxTokens);
+    ? buildOllamaPrompt(nodesWithResults, config.skipVlans ?? false)
+    : buildPrompt(nodesWithResults, config.skipVlans ?? false);
 
   setSetting("analysis_running", "1");
 

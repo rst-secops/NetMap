@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useRef, useState } from "react";
 import Link from "next/link";
 import type { NodeFormState } from "../app/dc-nodes/actions";
 
@@ -10,6 +10,11 @@ const DEFAULT_COMMANDS = [
   "show ip route",
   "show ip int brief",
 ];
+
+interface CommandItem {
+  id: string;
+  value: string;
+}
 
 interface NodeFormProps {
   action: (prev: NodeFormState, formData: FormData) => Promise<NodeFormState>;
@@ -31,12 +36,15 @@ export default function NodeForm({ action, defaultValues }: NodeFormProps) {
 
   const [state, formAction, isPending] = useActionState(action, {});
 
-  const [commands, setCommands] = useState<string[]>(
-    defaultValues?.commands ?? DEFAULT_COMMANDS
+  // Use a ref-based counter for IDs to avoid hydration mismatches from random values.
+  // The counter starts at 0 on both server and client, producing deterministic initial IDs.
+  const idCounter = useRef(0);
+  const [commands, setCommands] = useState<CommandItem[]>(
+    () => (defaultValues?.commands ?? DEFAULT_COMMANDS).map((value) => ({ id: String(idCounter.current++), value }))
   );
 
   function addCommand() {
-    setCommands((prev) => [...prev, ""]);
+    setCommands((prev) => [...prev, { id: String(idCounter.current++), value: "" }]);
   }
 
   function removeCommand(index: number) {
@@ -44,7 +52,7 @@ export default function NodeForm({ action, defaultValues }: NodeFormProps) {
   }
 
   function updateCommand(index: number, value: string) {
-    setCommands((prev) => prev.map((c, i) => (i === index ? value : c)));
+    setCommands((prev) => prev.map((item, i) => (i === index ? { ...item, value } : item)));
   }
 
   function moveCommand(index: number, direction: "up" | "down") {
@@ -229,16 +237,16 @@ export default function NodeForm({ action, defaultValues }: NodeFormProps) {
         )}
 
         <ul className="space-y-2" role="list">
-          {commands.map((cmd, i) => (
-            <li key={i} className="flex items-center gap-2">
-              <label htmlFor={`command-${i}`} className="sr-only">
+          {commands.map((item, i) => (
+            <li key={item.id} className="flex items-center gap-2">
+              <label htmlFor={`command-${item.id}`} className="sr-only">
                 Command {i + 1}
               </label>
               <input
-                id={`command-${i}`}
+                id={`command-${item.id}`}
                 name="commands"
                 type="text"
-                value={cmd}
+                value={item.value}
                 onChange={(e) => updateCommand(i, e.target.value)}
                 className="block flex-1 rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 font-mono text-sm text-gray-100 placeholder:text-gray-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 placeholder="e.g. show ip route"

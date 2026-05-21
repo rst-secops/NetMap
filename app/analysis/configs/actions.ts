@@ -138,6 +138,13 @@ export async function fetchOllamaModelsAction(
 ): Promise<{ models?: string[]; error?: string }> {
   if (!baseUrl) return { error: "Server URL is required" };
   try {
+    const { protocol } = new URL(baseUrl);
+    if (protocol !== "http:" && protocol !== "https:")
+      return { error: "Server URL must use http:// or https://" };
+  } catch {
+    return { error: "Invalid server URL" };
+  }
+  try {
     const response = await fetch(`${baseUrl}/api/tags`, {
       signal: AbortSignal.timeout(5000),
     });

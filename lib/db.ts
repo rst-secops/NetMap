@@ -1,3 +1,4 @@
+import { join } from "path";
 import { Database } from "bun:sqlite";
 import type { SQLQueryBindings } from "bun:sqlite";
 
@@ -101,26 +102,36 @@ function initSchema(database: Database): void {
     "INSERT OR IGNORE INTO settings (key, value) VALUES ('last_seen_analysis_id', '')"
   );
 
-  // Migrate existing global Claude config from settings into analysis_configs as "Default"
-  database.run(`
-    INSERT OR IGNORE INTO analysis_configs (id, name, provider, model, max_tokens, base_url, api_key, is_default)
-    SELECT
-      'default-migrated',
-      'Default',
-      COALESCE(MAX(CASE WHEN key = 'analysis_provider' THEN value END), 'claude'),
-      COALESCE(MAX(CASE WHEN key = 'analysis_claude_model' THEN value END), 'claude-sonnet-4-20250514'),
-      CAST(COALESCE(MAX(CASE WHEN key = 'analysis_claude_max_tokens' THEN value END), '4096') AS INTEGER),
-      COALESCE(MAX(CASE WHEN key = 'analysis_claude_base_url' THEN value END), ''),
-      COALESCE(MAX(CASE WHEN key = 'analysis_claude_api_key' THEN value END), ''),
-      1
-    FROM settings
-  `);
+  // Reset any analysis_running flag left over from a previous crash or unclean shutdown (#5)
+  database.run(
+    "INSERT INTO settings (key, value) VALUES ('analysis_running', '0') ON CONFLICT(key) DO UPDATE SET value = '0', updated_at = datetime('now')"
+  );
+
+  // One-time migration: copy legacy global Claude config from settings into analysis_configs as "Default".
+  // Guarded by a flag so manually deleting the "Default" config does not re-create it on restart (#11).
+  const migrated = database.query("SELECT value FROM settings WHERE key = 'migrated_default_config'").get();
+  if (!migrated) {
+    database.run(`
+      INSERT OR IGNORE INTO analysis_configs (id, name, provider, model, max_tokens, base_url, api_key, is_default)
+      SELECT
+        'default-migrated',
+        'Default',
+        COALESCE(MAX(CASE WHEN key = 'analysis_provider' THEN value END), 'claude'),
+        COALESCE(MAX(CASE WHEN key = 'analysis_claude_model' THEN value END), 'claude-sonnet-4-20250514'),
+        CAST(COALESCE(MAX(CASE WHEN key = 'analysis_claude_max_tokens' THEN value END), '4096') AS INTEGER),
+        COALESCE(MAX(CASE WHEN key = 'analysis_claude_base_url' THEN value END), ''),
+        COALESCE(MAX(CASE WHEN key = 'analysis_claude_api_key' THEN value END), ''),
+        1
+      FROM settings
+    `);
+    database.run("INSERT INTO settings (key, value) VALUES ('migrated_default_config', '1')");
+  }
 }
 
 export function getDb(): Database {
   if (db) return db;
 
-  db = new Database("data/app.db");
+  db = new Database(join(process.cwd(), "data", "app.db"));
   db.run("PRAGMA journal_mode = WAL");
   db.run("PRAGMA foreign_keys = ON");
   initSchema(db);
