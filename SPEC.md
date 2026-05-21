@@ -92,7 +92,8 @@ Authentication is not required for now; may be implemented later.
 - "Run Analysis" card above the list: config selector dropdown + run button
 
 **Create / Edit an analysis configuration** (`/analysis/configs/new`, `/analysis/configs/[id]/edit`)
-- Fields: Config Name, LLM Provider (dropdown), Model (dropdown, updates when provider changes), Max Tokens, API Base URL (optional override), API Key (password field with masked display on edit), Set as Default (checkbox)
+- Fields: Config Name, LLM Provider (dropdown), Model (dropdown or fetched from server), Max Tokens, API Base URL (optional, cloud providers only), API Key (optional for local models), Set as Default (checkbox)
+- When "Local Model" is selected: Backend sub-dropdown (Ollama / vLLM / LM Studio / TensorRT-LLM / Jan.ai / NVIDIA NIM), Server URL (required), "Fetch Models" button populates the model dropdown live from the server, "Enter manually" fallback, Skip VLANs checkbox
 - Edit page also shows the API call log for that config
 
 **Delete an analysis configuration:**
@@ -102,6 +103,13 @@ Authentication is not required for now; may be implemented later.
 **Supported LLM providers:**
 - **Claude (Anthropic)** — models: Claude Sonnet 4, Claude Haiku 4.5, Claude Opus 4
 - **Google AI Studio** — models: Gemini 2.5 Flash, Gemini 2.5 Pro, Gemini 2.0 Flash
+- **Local Model** — on-prem inference servers; backend selected per config:
+  - **Ollama** (native `/api/chat` format; model list from `GET /api/tags`)
+  - **vLLM**, **LM Studio**, **TensorRT-LLM**, **Jan.ai**, **NVIDIA NIM** (all OpenAI-compatible: `POST /v1/chat/completions`; model list from `GET /v1/models`)
+  - Server URL required; API key optional (Bearer token for setups that require one)
+  - "Skip VLANs" option to reduce prompt size for smaller models
+  - Model list fetched live from the running server; manual text entry available as a fallback
+  - Runs execute in the background with a 20-minute timeout
 
 ### 3.4 Network Maps Viewer
 
@@ -168,16 +176,20 @@ Seeded keys: `dc_schedule_type`, `dc_schedule_time`, `last_analysis_id`, `last_s
 CREATE TABLE IF NOT EXISTS analysis_configs (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL UNIQUE,
-  provider TEXT NOT NULL DEFAULT 'claude',
+  provider TEXT NOT NULL DEFAULT 'claude',       -- 'claude' | 'google' | 'local'
+  local_backend TEXT NOT NULL DEFAULT 'ollama',  -- 'ollama'|'vllm'|'lmstudio'|'tensorrt'|'janai'|'nim'; '' for cloud providers
   model TEXT NOT NULL DEFAULT 'claude-sonnet-4-20250514',
   max_tokens INTEGER NOT NULL DEFAULT 4096,
   base_url TEXT NOT NULL DEFAULT '',
   api_key TEXT NOT NULL DEFAULT '',
   is_default INTEGER NOT NULL DEFAULT 0,
+  skip_vlans INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 ```
+
+`local_backend` and `skip_vlans` are added via `ALTER TABLE` migrations on startup (guarded by `PRAGMA table_info`).
 
 #### analysis_results
 
@@ -188,11 +200,12 @@ CREATE TABLE IF NOT EXISTS analysis_results (
   config_name TEXT NOT NULL DEFAULT '',
   raw_response TEXT NOT NULL,
   graph_data TEXT NOT NULL,
+  layout_data TEXT,                              -- persisted React Flow layout (nullable)
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 ```
 
-Capped at 100 rows; oldest are deleted on insert beyond the limit.
+Capped at 100 rows; oldest are deleted on insert beyond the limit. `name`, `config_name`, and `layout_data` are added via `ALTER TABLE` migrations.
 
 #### api_call_logs
 
@@ -319,21 +332,37 @@ Builds `systemPrompt` and `userMessage` from collected DC node data. Input budge
 
 ### 8.1 API Call Routing (`app/analysis/actions.ts`)
 
-`runAnalysisAction` reads `configId` from form data (falls back to default config), builds the prompt via `buildPrompt()`, then routes to the correct LLM API:
+`runAnalysisAction` reads `configId` from form data (falls back to default config), builds the prompt, then routes to the correct LLM API. All paths log to `api_call_logs`, strip markdown fences, validate against `networkGraphSchema`, and save the result.
 
 **Claude (Anthropic)**
 - Endpoint: `POST {baseUrl}/v1/messages`
-- Auth: `x-api-key` header + `anthropic-version: 2023-06-01`
+- Auth: `x-api-key` + `anthropic-version: 2023-06-01` headers
 - Request: `{ model, max_tokens, system, messages: [{role: "user", content}] }`
 - Response text: `body.content[0].text`
+- Prompt builder: `buildPrompt()`
 
 **Google AI Studio**
 - Endpoint: `POST {baseUrl}/v1beta/models/{model}:generateContent`
 - Auth: `x-goog-api-key` header
-- Request: `{ systemInstruction: {parts: [{text}]}, contents: [{role: "user", parts: [{text}]}], generationConfig: {maxOutputTokens} }`
+- Request: `{ systemInstruction, contents, generationConfig: {maxOutputTokens} }`
 - Response text: `body.candidates[0].content.parts[0].text`
+- Prompt builder: `buildPrompt()`
 
-Both paths log the call to `api_call_logs`, strip markdown fences from the response, validate against `networkGraphSchema`, and save the result.
+**Local Model — Ollama**
+- Endpoint: `POST {baseUrl}/api/chat`
+- Auth: optional `Authorization: Bearer {apiKey}` header
+- Request: `{ model, messages: [{role, content}], stream: false, format: "json", options: {num_predict} }`
+- Response text: `body.message.content`
+- Prompt builder: `buildOllamaPrompt()` (optimised for smaller models)
+- Runs in background with 20-minute `AbortSignal` timeout
+
+**Local Model — vLLM / LM Studio / TensorRT-LLM / Jan.ai / NVIDIA NIM**
+- Endpoint: `POST {baseUrl}/v1/chat/completions`
+- Auth: optional `Authorization: Bearer {apiKey}` header
+- Request: `{ model, max_tokens, messages: [{role, content}] }` (OpenAI-compatible)
+- Response text: `body.choices[0].message.content`
+- Prompt builder: `buildPrompt()`
+- Runs in background with 20-minute `AbortSignal` timeout
 
 ## 9. Styling (TailwindCSS)
 

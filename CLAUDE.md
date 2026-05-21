@@ -40,7 +40,7 @@ Always use Bun (not npm/npx/yarn) for running scripts and installing packages.
 
 1. **Data Collection** — SSH sessions (via ssh2) and API calls (fetch) to gather config/topology data from routers, switches, and WLAN infrastructure. Credentials and results are stored in the `dc_nodes` SQLite table.
 
-2. **Analysis** — Named, reusable analysis configurations select the LLM provider and model. Supported providers: Claude (Anthropic) and Google AI Studio. Results are stored with a name (`<config> – YYYY-MM-DD HH:mm`), capped at 100. API calls are logged per config.
+2. **Analysis** — Named, reusable analysis configurations select the LLM provider and model. Supported providers: Claude (Anthropic), Google AI Studio, and Local Model (Ollama, vLLM, LM Studio, TensorRT-LLM, Jan.ai, NVIDIA NIM). Results are stored with a name (`<config> – YYYY-MM-DD HH:mm`), capped at 100. API calls are logged per config. Local model runs execute in the background with a 20-minute timeout.
 
 3. **Network Visualization** — React Flow canvas with dagre auto-layout. The Network Maps viewer (`/`) lets users switch between stored results, delete results, and click nodes/edges for metadata.
 
@@ -58,7 +58,7 @@ lib/settings.ts            # Key-value settings helpers
 lib/analysis-settings.ts   # Legacy analysis settings (deprecated path)
 app/page.tsx               # Network Maps viewer (MapViewer)
 app/actions.ts             # Global server actions (mark seen, delete result)
-app/analysis/actions.ts    # runAnalysisAction — routes to Claude or Google AI
+app/analysis/actions.ts    # runAnalysisAction — routes to Claude, Google AI, or local model
 app/analysis/configs/      # Analysis config CRUD pages + actions
 app/dc-nodes/              # DC Node management pages + actions
 components/                # All UI components (see SPEC.md §7.3)
@@ -71,7 +71,7 @@ Single SQLite file at `data/app.db`. Schema is auto-migrated on every `getDb()` 
 
 - `dc_nodes` — DC node credentials and last collection results
 - `settings` — key-value store (schedule, last_analysis_id, last_seen_analysis_id)
-- `analysis_configs` — named LLM configurations (provider, model, key, etc.)
+- `analysis_configs` — named LLM configurations (provider, local_backend, model, key, etc.)
 - `analysis_results` — stored analysis results with graph data (capped at 100)
 - `api_call_logs` — full request/response log per LLM call, linked to config
 
@@ -91,8 +91,17 @@ run(sql, ...params)
 `runAnalysisAction` in `app/analysis/actions.ts` branches on `config.provider`:
 - `"claude"` → `POST {baseUrl}/v1/messages` with `x-api-key` + `anthropic-version` headers
 - `"google"` → `POST {baseUrl}/v1beta/models/{model}:generateContent` with `x-goog-api-key` header
+- `"local"` → branches further on `config.localBackend`:
+  - `"ollama"` → `POST {baseUrl}/api/chat` (Ollama-native format, `stream: false`); model list from `GET /api/tags`
+  - all others (vllm, lmstudio, tensorrt, janai, nim) → `POST {baseUrl}/v1/chat/completions` (OpenAI-compatible); model list from `GET /v1/models`
 
-Both paths strip markdown fences from responses before JSON parsing.
+Local model runs are fired in the background (fire-and-forget with a 20-minute `AbortSignal` timeout); cloud runs are awaited synchronously. All paths log the call to `api_call_logs`, strip markdown fences, validate against `networkGraphSchema`, and save the result.
+
+### analysis_configs — current columns
+
+`id`, `name`, `provider` (`claude`|`google`|`local`), `local_backend` (`ollama`|`vllm`|`lmstudio`|`tensorrt`|`janai`|`nim`), `model`, `max_tokens`, `base_url`, `api_key`, `is_default`, `skip_vlans`, `created_at`, `updated_at`
+
+For cloud providers `local_backend` is stored as `''`. The `fetchLocalModelsAction` server action fetches available models from the running local server — Ollama via `/api/tags`, all others via `/v1/models`.
 
 ### Schema Migration Pattern
 
